@@ -154,3 +154,5 @@ registry/
 playwright-report/
 test-results/
 
+
+.worktrees/
