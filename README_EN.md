@@ -55,13 +55,13 @@
 **macOS / Linux** (also works in Git Bash / WSL on Windows):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell 5.1+ / pwsh)**:
 
 ```powershell
-irm https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1 | iex
 ```
 
 Then **hard-refresh the browser** (Cmd/Ctrl+Shift+R) to see the sidebar (DSH hot-reloads client changes; only host-half updates need a restart).
@@ -71,10 +71,10 @@ Then **hard-refresh the browser** (Cmd/Ctrl+Shift+R) to see the sidebar (DSH hot
 
 ```sh
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
+curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
 
 # Windows PowerShell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
 ```
 
 Not sure? Add `--dry-run` (`-DryRun` in PowerShell) to preview before running.
@@ -166,7 +166,7 @@ or re-run the one-click script; or bump the version in `~/.dsh/profiles/web/pack
 To debug local changes or track the dev branch, point the dependency at a local clone and build it yourself:
 
 ```text
-1. git clone https://github.com/omdsh-dev/DSH-better-sidebar.git ~/Code/DSH-better-sidebar
+1. git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git ~/Code/DSH-better-sidebar
    cd ~/Code/DSH-better-sidebar && pnpm install && pnpm build
 2. In ~/.dsh/profiles/web/package.json dependencies write "dsh-better-sidebar": "link:<absolute path of the clone>"
 3. Append this mount line to ~/.dsh/profiles/web/cordis.patch.yml:
@@ -187,7 +187,7 @@ Update: `git pull && pnpm install && pnpm build` → just hard-refresh the brows
 Prerequisite: DSH with [plugin-registry](https://github.com/dsh-external/plugin-registry) integrated (`dsh registry` available). **Enabling both channels double-mounts** (the Node half loads twice, the page gets two sidebars).
 
 ```sh
-git clone https://github.com/omdsh-dev/DSH-better-sidebar.git && cd DSH-better-sidebar
+git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git && cd DSH-better-sidebar
 pnpm install && pnpm build
 node scripts/package-registry.mjs   # assemble the registry/ staging (manifest + artifacts + README, not committed)
 dsh registry install ./registry     # install (disabled by default)
