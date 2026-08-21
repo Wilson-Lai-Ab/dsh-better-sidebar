@@ -39,8 +39,8 @@
 }
 
 /* The tab strip of the OPEN right panel reserves the cluster's width at its
-   right end, so the tabs and the + menu genuinely yield space to the cluster
-   (never hiding under it). */
+   right end, so the tabs genuinely yield space to the toggle cluster (never
+   hiding under it). */
 .panel:not(.panelHidden) .tabBar {
   padding-right: 72px;
 }
@@ -102,20 +102,22 @@
     width var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 }
 
-/* Collapsed: slid off-screen, interactive nothing, hidden after the slide. */
+/* Collapsed: the panel stays pinned to the viewport's right edge (`right: 0`)
+   but is interactive nothing and hidden. The activity bar is NOT moved (it
+   lives at the panel's right edge), so it stays visible + clickable at the
+   viewport edge — the VS Code collapsed state. A `transform` here would take
+   the whole panel INCLUDING the rail off-screen and the `visibility: visible`
+   override could not counteract it. */
 .panelHidden {
-  transform: translateX(102%);
   pointer-events: none;
   visibility: hidden;
-  transition:
-    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
-    width var(--ds-transition-duration-slow) var(--ds-ease-in-out),
-    visibility 0s linear var(--ds-transition-duration-slow);
 }
 
 /* The activity bar stays visible + clickable while the panel is collapsed
    (VS Code): clicking any icon expands the panel first so the open lands in
-   sight. The rest of the panel stays hidden. */
+   sight. The rest of the panel (its chrome + body) stays hidden. The rail
+   keeps its flex position at the panel's right edge, which is the viewport's
+   right edge, so it is reachable exactly where VS Code keeps its rail. */
 .panelHidden .activityBar {
   visibility: visible;
   pointer-events: auto;
@@ -883,32 +885,6 @@
 }
 
 .tabClose:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-.tabBarPlus {
-  flex: none;
-  align-self: center;
-  /* Adjacent to the rightmost tab; sticky so overflowing tab rows keep it
-     visible at the right edge of the scrollport. */
-  position: sticky;
-  right: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin: 0 6px;
-  padding: 0;
-  border: none;
-  border-radius: 5px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-tertiary);
-  cursor: pointer;
-}
-
-.tabBarPlus:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
@@ -2682,7 +2658,6 @@
 .iconButton:focus-visible,
 .tab:focus-visible,
 .tabClose:focus-visible,
-.tabBarPlus:focus-visible,
 .paneCard:focus-visible,
 .explorerRow:focus-visible,
 .explorerRef:focus-visible,
@@ -2710,7 +2685,6 @@
   .toggleCluster,
   .toggleButton,
   .tab,
-  .tabBarPlus,
   .paneCard,
   .explorerRow,
   .gitRow,

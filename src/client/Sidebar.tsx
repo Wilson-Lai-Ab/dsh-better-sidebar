@@ -700,18 +700,35 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
   /** The badge pill for one activity-bar icon (per type). */
   const activityBadgeOf = (typeId: string): ReactNode => badgePillOf(badgeValueOf(typeId), css.activityBadge)
 
-  // The tab strip shows only file-preview/aux types (registry `hidden`):
-  // editor / diff / git-log and plugin-hidden types. Tool views live in the
-  // activity bar; without a registry (standalone/test) every tab shows.
+  // The tab strip shows only file-preview/aux types (registry `hidden`) and
+  // multi-instance tool views: editor / diff / git-log and plugin-hidden types
+  // render here because they have no activity-bar icon; terminal/browser mint
+  // `:<n>` ids and are meant to be opened several at once, so their tabs must
+  // render in the strip for the user to see/switch/close/drag them. Tool
+  // views with an activity-bar icon live in the bar. Two things MUST also
+  // stay in the strip or a tab becomes invisible AND unclosable (no strip
+  // close button, no bar icon): orphaned tabs (plugin unloaded → type not in
+  // the registry) and settings-disabled tabs (isTabEnabled false → filtered
+  // out of buildNewTabOptions). Without a registry (standalone/test) every
+  // tab shows.
   const stripTabFilter = (tab: SidebarTab): boolean => {
     const service = ctx.betterSidebar
     if (service === undefined) return true
-    // Tool views live in the activity bar — EXCEPT the multi-instance ones:
-    // terminal and browser mint `:<n>` ids and are meant to be opened several
-    // at once, so their tabs must render in the strip for the user to
-    // see/switch/close/drag them (requirement: 终端默认靠下面打开、允许多开；浏览器同款).
-    return tab.type === 'terminal' || tab.type === 'browser'
-      || service.getTabs().some(descriptor => descriptor.hidden === true && descriptor.id === tab.type)
+    const tabs = service.getTabs()
+    // Multi-instance views (any descriptor with createTab — terminal/browser
+    // or a third-party multi view) mint `<n>` ids: keep their tabs in the
+    // strip so they can be switched/closed individually.
+    const isMulti = tabs.some(d => d.id === tab.type && d.createTab !== undefined)
+    if (isMulti) return true
+    // File-preview/aux types (registry `hidden`): editor / diff / git-log.
+    const isHiddenPreview = tabs.some(d => d.id === tab.type && d.hidden === true)
+    if (isHiddenPreview) return true
+    // Any tab whose type is NOT offered by an enabled activity-bar icon must
+    // stay in the strip: orphaned tabs (type not registered) and
+    // settings-disabled tabs (isTabEnabled false) have no bar icon, so the
+    // strip is their only close affordance.
+    const hasBarIcon = tabs.some(d => d.id === tab.type && !d.hidden && service.isTabEnabled(d.id))
+    return !hasBarIcon
   }
 
   /**

@@ -179,6 +179,24 @@ test('plugin mounts into the DSH shell and survives a built-in tab sweep', async
     await assertNoCrash()
   }
 
+  // The active-icon collapse path (VS Code): clicking the ACTIVE single
+  // view's icon collapses the panel to the rail. The rail must stay
+  // visible AND clickable (it is a sibling of the translated body — not
+  // moved off-screen), and clicking another icon re-expands + opens.
+  const expandProbe = activityBar.getByRole('button', { name: 'Explorer' }).first()
+  await expect(expandProbe).toHaveCount(1)
+  await expandProbe.click()             // make Explorer active
+  await page.waitForTimeout(300)
+  await expandProbe.click()             // active single view → collapse
+  await page.waitForTimeout(1_500)
+  // Rail still present, still clickable while collapsed.
+  await expect(activityBar).toBeVisible()
+  const tasksIcon = activityBar.getByRole('button', { name: 'Tasks' }).first()
+  await expect(tasksIcon).toBeVisible() // reachable without expanding first
+  await tasksIcon.click()               // collapsed click → expand + open
+  await page.waitForTimeout(1_500)
+  await assertNoCrash()
+
   // The editor tab is hidden from the activity bar — its CodeMirror chunk
   // (client-editor.js) only loads when a file is opened. Exercise that path
   // explicitly: reopen Explorer from the activity bar, open the seeded file,

@@ -91,10 +91,11 @@ function zoneAt(event: React.DragEvent, pane: HTMLElement): DropZone {
 
 /**
  * The VS Code-style activity bar: a vertical rail of one icon per openable
- * tool view (non-hidden, enabled tab types — the set the "+" menu used to
- * offer). Clicking an icon opens/focuses that view (same dedupe semantics
- * as the old menu). The active view's icon is highlighted; hovering it shows
- * a close × (and middle-click closes) the focused pane's active tab.
+ * tool view (non-hidden, enabled tab types). Clicking an icon opens/focuses
+ * that view (same dedupe semantics as the old + menu); the active view's icon
+ * collapses the panel (VS Code) instead. A disabled view's icon is inert,
+ * EXCEPT the active one still collapses the panel on click (the close
+ * affordance stays live even when the view itself is unavailable).
  */
 export function ActivityBar(props: {
   options: NewTabOption[]
@@ -124,14 +125,19 @@ export function ActivityBar(props: {
             aria-disabled={(!active && disabled) || undefined}
             className={clsx(css.activityItem, active && css.activityActive)}
             onClick={() => {
-              if (!disabled) onSelect(option.id)
+              // A disabled-but-ACTIVE view is still clickable: its click
+              // collapses the panel (VS Code) — onSelect never opens anything
+              // for the active item, so letting it through is safe.
+              if (disabled && !active) return
+              onSelect(option.id)
             }}
             onKeyDown={(event) => {
               // Only keydown that originated on the item itself activates it.
               if (event.target !== event.currentTarget) return
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
-                if (!disabled) onSelect(option.id)
+                if (disabled && !active) return
+                onSelect(option.id)
               }
             }}
           >
@@ -386,10 +392,12 @@ export function Workbench(props: {
   // activity-bar semantics, VS Code style); for the panel that already owns
   // the active pane it is a no-op.
   //
-  // The old top-right toggle cluster is gone, so the icon rail carries the
-  // panel's open/close: clicking the ACTIVE view's icon collapses the panel
-  // (VS Code), and any click while the panel is collapsed expands it first
-  // so the open lands in sight.
+  // The activity-bar rail carries the panel's open/close for TOOL views:
+  // clicking the ACTIVE view's icon collapses the panel (VS Code), and any
+  // click while the panel is collapsed expands it first so the open lands in
+  // sight. The top-right toggle cluster still exists for the case where no
+  // tool view is active (e.g. an editor file is open) and there is no bar
+  // icon to click — it stays as the file-preview collapse affordance.
   const handleSelect = (typeId: string): void => {
     const panelOpen = props.panelOpen !== false
     // Multi-instance views (terminal/browser) never collapse on their own

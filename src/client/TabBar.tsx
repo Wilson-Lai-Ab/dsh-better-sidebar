@@ -21,7 +21,7 @@ export interface NewTabOption {
   id: string
   label: string
   disabled?: boolean
-  /** Leading icon (Menu row). */
+  /** Leading icon (activity bar / empty-pane card). */
   icon?: ReactNode
   /** Multi-instance view (terminal/browser mint `<n>` ids): an active-icon
    *  click opens ANOTHER instance instead of collapsing the panel. */
@@ -101,7 +101,7 @@ export function TabBar(props: {
   stripTabFilter?: (tab: SidebarTab) => boolean
 }) {
   const {
-    paneId, tabs, active, onActivate, onClose, onNewTab, newTabOptions, onDropTab, onDockToCenter, getTabIcon, getTabBadge, getTabTitleClass, stripTabFilter,
+    paneId, tabs, active, onActivate, onClose, onDropTab, onDockToCenter, getTabIcon, getTabBadge, getTabTitleClass, stripTabFilter,
   } = props
   const [dragOver, setDragOver] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
