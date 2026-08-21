@@ -1,26 +1,31 @@
 /**
  * The tab strip of one pane: tabs capped at TAB_MAX_WIDTH (ellipsized),
- * overflow scrolls horizontally, a close button per tab, a four-way split
- * button cluster, and the + menu that opens new tabs (explorer / git / review /
- * terminal). Tabs are draggable; dropping onto another tab inserts before it,
- * dropping on the strip background appends to this pane.
+ * overflow scrolls horizontally, a close button per tab, and drag/drop
+ * support. New views open from the workbench's activity bar (the + menu is
+ * gone), so `onNewTab`/`newTabOptions` are optional here — `PaneEmptyCards`
+ * still offers the openable types on an empty pane. `stripTabFilter`
+ * limits the strip to file-preview/aux tabs (editor / diff / git-log) when
+ * the activity bar owns the tool views.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconCloseFill14, IconPlusOutline16, Menu,
+  IconCloseFill14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SidebarTab } from './state.ts'
 import { t } from './locales.ts'
 import css from './sidebar.module.css'
 
-/** One + menu option. */
+/** One activity-bar / empty-pane option. */
 export interface NewTabOption {
   id: string
   label: string
   disabled?: boolean
   /** Leading icon (Menu row). */
   icon?: ReactNode
+  /** Multi-instance view (terminal/browser mint `<n>` ids): an active-icon
+   *  click opens ANOTHER instance instead of collapsing the panel. */
+  multi?: boolean
 }
 
 /** Drag payload for tab moves (HTML5 DnD dataTransfer). */
@@ -77,8 +82,9 @@ export function TabBar(props: {
   active: string | null
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
-  onNewTab: (optionId: string) => void
-  newTabOptions: NewTabOption[]
+  /** Optional: the + menu is gone; empty-pane cards open new tabs instead. */
+  onNewTab?: (optionId: string) => void
+  newTabOptions?: NewTabOption[]
   /** Drop of a tab from any pane: (payload, insertBeforeTabId | null). */
   onDropTab: (payload: TabDragPayload, before: string | null) => void
   /** Double-click a workbench tab: dock it onto the conversation header. */
@@ -90,13 +96,16 @@ export function TabBar(props: {
   getTabBadge?: (tab: SidebarTab) => ReactNode
   /** Extra class on the tab title (git status color). */
   getTabTitleClass?: (tab: SidebarTab) => string | undefined
+  /** Only render tabs that pass this predicate (file-preview types in the
+   *  strip when the activity bar owns the tool views). Omit → every tab. */
+  stripTabFilter?: (tab: SidebarTab) => boolean
 }) {
   const {
-    paneId, tabs, active, onActivate, onClose, onNewTab, newTabOptions, onDropTab, onDockToCenter, getTabIcon, getTabBadge, getTabTitleClass,
+    paneId, tabs, active, onActivate, onClose, onNewTab, newTabOptions, onDropTab, onDockToCenter, getTabIcon, getTabBadge, getTabTitleClass, stripTabFilter,
   } = props
-  const [menuOpen, setMenuOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const stripTabs = stripTabFilter === undefined ? tabs : tabs.filter(stripTabFilter)
 
   // Wheel over the strip scrolls the tab row horizontally (a plain mouse
   // wheel emits deltaY, which overflow-x alone never consumes). Bound as a
@@ -153,7 +162,7 @@ export function TabBar(props: {
       }}
     >
       <div ref={listRef} className={css.tabList}>
-        {tabs.map(tab => (
+        {stripTabs.map(tab => (
           <div
             key={tab.id}
             className={clsx(css.tab, active === tab.id && css.tabActive)}
@@ -205,38 +214,6 @@ export function TabBar(props: {
             </button>
           </div>
         ))}
-        {/*
-          The + sits immediately after the rightmost tab (sticky at the
-          right edge of the scrollport when the tabs overflow, so it stays
-          reachable no matter how many tabs are open).
-        */}
-        <Menu
-          open={menuOpen}
-          onClose={() => { setMenuOpen(false) }}
-          items={newTabOptions.map(option => ({
-            id: option.id,
-            label: option.label,
-            ...(option.disabled === true ? { disabled: true } : {}),
-            ...(option.icon !== undefined ? { icon: option.icon } : {}),
-          }))}
-          onSelect={(id) => {
-            onNewTab(id)
-            setMenuOpen(false)
-          }}
-          portal
-          align="end"
-          anchor={(
-            <button
-              type="button"
-              className={css.tabBarPlus}
-              aria-label={t('newTab')}
-              title={t('newTab')}
-              onClick={() => { setMenuOpen(v => !v) }}
-            >
-              <IconPlusOutline16 />
-            </button>
-          )}
-        />
       </div>
     </div>
   )

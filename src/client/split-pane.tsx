@@ -9,11 +9,12 @@
  * that merges the tab into the pane. The tree and all operations live in
  * state.ts; this file is pure presentation over them.
  */
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { SidebarState, SidebarTab, SplitNode } from './state.ts'
 import type { DropZone } from './state.ts'
+import { firstLeaf, allLeaves } from './state.ts'
 import { TabBar, type NewTabOption, parseDrag, type TabDragPayload } from './TabBar.tsx'
 import css from './sidebar.module.css'
 
@@ -88,7 +89,61 @@ function zoneAt(event: React.DragEvent, pane: HTMLElement): DropZone {
   return 'center'
 }
 
-/** The icon of one openable type card (mirror of the + menu options). */
+/**
+ * The VS Code-style activity bar: a vertical rail of one icon per openable
+ * tool view (non-hidden, enabled tab types — the set the "+" menu used to
+ * offer). Clicking an icon opens/focuses that view (same dedupe semantics
+ * as the old menu). The active view's icon is highlighted; hovering it shows
+ * a close × (and middle-click closes) the focused pane's active tab.
+ */
+export function ActivityBar(props: {
+  options: NewTabOption[]
+  activeType: string | undefined
+  onSelect: (typeId: string) => void
+  getBadge?: (typeId: string) => ReactNode
+  /** Which edge of the workbench the rail hugs ('right' mirrors the rail). */
+  side?: 'left' | 'right'
+}) {
+  const { options, activeType, onSelect, getBadge, side = 'left' } = props
+  if (options.length === 0) return null
+  return (
+    <div className={clsx(css.activityBar, side === 'right' && css.activityBarRight)} data-sidebar-activity-bar>
+      {options.map(option => {
+        const active = activeType === option.id
+        const disabled = option.disabled === true
+        return (
+          <div
+            key={option.id}
+            role="button"
+            tabIndex={0}
+            aria-label={option.label}
+            title={option.label}
+            // A disabled-but-active view must still read as the active view
+            // (its close affordance stays live), so only mark it disabled
+            // when it is not the one currently open.
+            aria-disabled={(!active && disabled) || undefined}
+            className={clsx(css.activityItem, active && css.activityActive)}
+            onClick={() => {
+              if (!disabled) onSelect(option.id)
+            }}
+            onKeyDown={(event) => {
+              // Only keydown that originated on the item itself activates it.
+              if (event.target !== event.currentTarget) return
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                if (!disabled) onSelect(option.id)
+              }
+            }}
+          >
+            {option.icon ?? null}
+            {getBadge?.(option.id) ?? null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /**
  * An empty pane's welcome cards: the openable types as cards, clicked to
  * open (instead of a bare "this pane is empty" message).
@@ -127,8 +182,9 @@ function LeafView(props: {
   getTabIcon?: (tab: SidebarTab) => ReactNode
   getTabBadge?: (tab: SidebarTab) => ReactNode
   getTabTitleClass?: (tab: SidebarTab) => string | undefined
+  stripTabFilter?: (tab: SidebarTab) => boolean
 }) {
-  const { leaf, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass } = props
+  const { leaf, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass, stripTabFilter } = props
   const [dropZone, setDropZone] = useState<DropZone | null>(null)
   const activeTab = leaf.tabs.find(tab => tab.id === leaf.active) ?? leaf.tabs[leaf.tabs.length - 1]
 
@@ -169,9 +225,8 @@ function LeafView(props: {
     >
       {dropZone !== null && <div className={clsx(css.dropOverlay, css[`drop${dropZone[0]!.toUpperCase()}${dropZone.slice(1)}`])} />}
       {/*
-        The tab strip renders even for an empty pane: the + menu must stay
-        reachable when the pane has no tabs (fresh split, or the last tab was
-        dragged out), so a new tab can always be created or dragged in.
+        The tab strip renders even for an empty pane: a new tab can always be
+        created via the activity bar or dragged in.
       */}
       <TabBar
         paneId={leaf.id}
@@ -179,11 +234,10 @@ function LeafView(props: {
         active={leaf.active}
         onActivate={(tabId) => { actions.activateTab(leaf.id, tabId) }}
         onClose={(tabId) => { actions.closeTab(leaf.id, tabId) }}
-        onNewTab={onNewTab}
-        newTabOptions={newTabOptions}
         getTabIcon={getTabIcon}
         getTabBadge={getTabBadge}
         getTabTitleClass={getTabTitleClass}
+        stripTabFilter={stripTabFilter}
         onDropTab={(payload, before) => {
           if (before === null) actions.moveTabToEdge(payload, leaf.id, 'center')
           else actions.moveTabBefore(payload, leaf.id, before)
@@ -226,8 +280,9 @@ function NodeView(props: {
   getTabIcon?: (tab: SidebarTab) => ReactNode
   getTabBadge?: (tab: SidebarTab) => ReactNode
   getTabTitleClass?: (tab: SidebarTab) => string | undefined
+  stripTabFilter?: (tab: SidebarTab) => boolean
 }) {
-  const { node, state, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass } = props
+  const { node, state, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass, stripTabFilter } = props
   if (node.kind === 'leaf') {
     return (
       <LeafView
@@ -239,6 +294,7 @@ function NodeView(props: {
         getTabIcon={getTabIcon}
         getTabBadge={getTabBadge}
         getTabTitleClass={getTabTitleClass}
+        stripTabFilter={stripTabFilter}
       />
     )
   }
@@ -267,6 +323,7 @@ function NodeView(props: {
               getTabIcon={getTabIcon}
               getTabBadge={getTabBadge}
               getTabTitleClass={getTabTitleClass}
+              stripTabFilter={stripTabFilter}
             />
           </div>
         </Fragment>
@@ -275,10 +332,12 @@ function NodeView(props: {
   )
 }
 
-/** The workbench: the split tree filling the sidebar body. `tree` selects
- *  which tree renders (the right panel's by default; the bottom panel passes
- *  `state.bottomSplits` — the actions route by pane id, so one action set
- *  serves both). */
+/** The workbench: the activity bar plus the split tree filling the sidebar
+ *  body. `tree` selects which tree renders (the right panel's by default;
+ *  the bottom panel passes `state.bottomSplits` — the actions route by pane
+ *  id, so one action set serves both). `stripTabFilter` limits which tabs
+ *  render in the strip (file-preview types only); `getActivityBadge` feeds
+ *  per-type badges onto the activity icons. */
 export function Workbench(props: {
   state: SidebarState
   tree?: SplitNode
@@ -289,21 +348,91 @@ export function Workbench(props: {
   getTabIcon?: (tab: SidebarTab) => ReactNode
   getTabBadge?: (tab: SidebarTab) => ReactNode
   getTabTitleClass?: (tab: SidebarTab) => string | undefined
+  stripTabFilter?: (tab: SidebarTab) => boolean
+  getActivityBadge?: (typeId: string) => ReactNode
+  /** false hides the vertical rail (the bottom workbench renders content only). */
+  showActivityBar?: boolean
+  /** Which edge the rail hugs: 'left' (default) or 'right' (content first). */
+  activityBarSide?: 'left' | 'right'
+  /** Whether the hosting panel is expanded (drives the active-icon toggle). */
+  panelOpen?: boolean
+  /** Collapse/expand the hosting panel (VS Code active-icon click). */
+  onTogglePanel?: () => void
 }) {
-  const { state, tree, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass } = props
+  const {
+    state, tree, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass,
+    stripTabFilter, getActivityBadge, showActivityBar = true, activityBarSide = 'left',
+  } = props
+  const root = tree ?? state.splits
+
+  // The focused pane's active tab within THIS tree (the active-pane id may
+  // point into the other tree — fall back to the first leaf so the bar
+  // always reflects this workbench's own current view).
+  const focused = useMemo(() => {
+    const paneId = state.activePane
+    const leaf = paneId === null ? undefined : allLeaves(root).find(candidate => candidate.id === paneId)
+    const pane = leaf ?? firstLeaf(root)
+    const tab = pane.tabs.find(candidate => candidate.id === pane.active) ?? pane.tabs[pane.tabs.length - 1]
+    return { pane, tab }
+  }, [root, state.activePane])
+
+  const activeType = focused.tab?.type
+
+  // Route activity-bar opens into THIS workbench's tree. `openTab` lands on
+  // the single global active pane (state.activePane), which may live in the
+  // OTHER panel's tree — so a bottom-bar click could open in the right panel
+  // while this bar's highlight/× tracks its own tree. Focusing this tree's
+  // current pane first pins the open where the user clicked (per-panel
+  // activity-bar semantics, VS Code style); for the panel that already owns
+  // the active pane it is a no-op.
+  //
+  // The old top-right toggle cluster is gone, so the icon rail carries the
+  // panel's open/close: clicking the ACTIVE view's icon collapses the panel
+  // (VS Code), and any click while the panel is collapsed expands it first
+  // so the open lands in sight.
+  const handleSelect = (typeId: string): void => {
+    const panelOpen = props.panelOpen !== false
+    // Multi-instance views (terminal/browser) never collapse on their own
+    // active-icon click — that click mints ANOTHER instance (multi-open),
+    // mirroring the terminal's bottom-panel behavior for the browser.
+    const multi = newTabOptions.some(option => option.id === typeId && option.multi === true)
+    if (panelOpen && activeType === typeId && !multi) {
+      props.onTogglePanel?.()
+      return
+    }
+    if (!panelOpen) props.onTogglePanel?.()
+    actions.focusPane(focused.pane.id)
+    onNewTab(typeId)
+  }
+
+  const bar = (
+    <ActivityBar
+      options={newTabOptions}
+      activeType={activeType}
+      onSelect={handleSelect}
+      getBadge={getActivityBadge}
+      side={activityBarSide}
+    />
+  )
+  const node = (
+    <NodeView
+      node={root}
+      state={state}
+      newTabOptions={newTabOptions}
+      actions={actions}
+      onNewTab={onNewTab}
+      renderTab={renderTab}
+      getTabIcon={getTabIcon}
+      getTabBadge={getTabBadge}
+      getTabTitleClass={getTabTitleClass}
+      stripTabFilter={stripTabFilter}
+    />
+  )
   return (
     <div className={css.workbench}>
-      <NodeView
-        node={tree ?? state.splits}
-        state={state}
-        newTabOptions={newTabOptions}
-        actions={actions}
-        onNewTab={onNewTab}
-        renderTab={renderTab}
-        getTabIcon={getTabIcon}
-        getTabBadge={getTabBadge}
-        getTabTitleClass={getTabTitleClass}
-      />
+      {showActivityBar && activityBarSide === 'left' ? bar : null}
+      {node}
+      {showActivityBar && activityBarSide === 'right' ? bar : null}
     </div>
   )
 }

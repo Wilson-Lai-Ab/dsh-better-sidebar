@@ -159,34 +159,34 @@ test('plugin mounts into the DSH shell and survives a built-in tab sweep', async
     expect(strips, 'a dsh-better-sidebar error strip is present in the sidebar').toBe(0)
   }
 
-  // Sweep every built-in tab through the "+" menu (the sidebar's own open-tab
-  // affordance, reachable from any pane state). Each open may fetch a lazy
-  // chunk (/sidebar/bundle/client-terminal.js / client-editor.js) and mount a
-  // real viewer — the highest-risk crash surfaces. The pinned plugin must
-  // offer every listed built-in: a missing or renamed descriptor is a real
-  // regression and fails the lane loudly instead of silently narrowing the
-  // sweep. A failure anywhere surfaces as a pageerror or a console error,
-  // both of which the next assertion sees.
-  const newTabButton = sidebar.getByRole('button', { name: 'New tab' }).first()
+  // Sweep every built-in tab through the activity bar (the sidebar's own
+  // open-tab affordance — the VS Code-style icon rail replaces the old "+"
+  // menu; the tab strip itself now shows file-preview tabs only). Each open
+  // may fetch a lazy chunk (/sidebar/bundle/client-terminal.js /
+  // client-editor.js) and mount a real viewer — the highest-risk crash
+  // surfaces. The pinned plugin must offer every listed built-in: a missing
+  // or renamed descriptor is a real regression and fails the lane loudly
+  // instead of silently narrowing the sweep. A failure anywhere surfaces as
+  // a pageerror or a console error, both of which the next assertion sees.
+  const activityBar = sidebar.locator('[data-sidebar-activity-bar]')
   for (const title of BUILTIN_TABS) {
-    await newTabButton.click()
-    const item = page.getByRole('menuitem', { name: title }).first()
-    await expect(item, `built-in tab "${title}" is not offered by the + menu — descriptor removed or its label changed`).toHaveCount(1)
-    await item.click()
+    const icon = activityBar.getByRole('button', { name: title }).first()
+    await expect(icon, `built-in tab "${title}" is not offered by the activity bar — descriptor removed or its label changed`).toHaveCount(1)
+    await icon.click()
     // Let the activation commit (including any lazy-chunk fetch) before the
     // crash assertions run.
     await page.waitForTimeout(1_500)
     await assertNoCrash()
   }
 
-  // The editor tab is hidden from the + menu — its CodeMirror chunk
+  // The editor tab is hidden from the activity bar — its CodeMirror chunk
   // (client-editor.js) only loads when a file is opened. Exercise that path
-  // explicitly: reopen Explorer, open the seeded file, and require the chunk
-  // round-trip, so a missing/corrupt editor chunk fails the lane.
-  await newTabButton.click()
-  const explorerItem = page.getByRole('menuitem', { name: 'Explorer' }).first()
-  await expect(explorerItem, 'Explorer must be re-openable for the editor-chunk probe').toHaveCount(1)
-  await explorerItem.click()
+  // explicitly: reopen Explorer from the activity bar, open the seeded file,
+  // and require the chunk round-trip, so a missing/corrupt editor chunk
+  // fails the lane.
+  const explorerIcon = activityBar.getByRole('button', { name: 'Explorer' }).first()
+  await expect(explorerIcon, 'Explorer must be re-openable for the editor-chunk probe').toHaveCount(1)
+  await explorerIcon.click()
   const editorChunk = page.waitForResponse(
     (response) => response.url().includes('/sidebar/bundle/editor.js'),
     { timeout: 30_000 },

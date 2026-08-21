@@ -75,6 +75,10 @@ function buildNewTabOptions(state: SidebarState, ctx: Context, scope: SessionSco
       label: typeof d.title === 'function' ? d.title() : d.title,
       disabled: !(d.available?.(ctx, scope, state) ?? true),
       icon: typeof d.icon === 'function' ? d.icon(16) : d.icon,
+      // Custom createTab = multi-instance (terminal/browser mint `<n>` ids):
+      // an activity-bar click on the ACTIVE icon opens another instance
+      // instead of collapsing the panel (multi-open).
+      multi: d.createTab !== undefined,
     }))
 }
 
@@ -671,19 +675,42 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
    * short text pill. A throwing badge is swallowed (no pill) — the tab
    * strip must never break because a plugin's badge computation failed.
    */
-  const tabBadgeOf = (tab: SidebarTab): ReactNode => {
-    const descriptor = ctx.betterSidebar?.getTab(tab.type)
+  const badgeValueOf = (typeId: string): string | number | null | undefined => {
+    const descriptor = ctx.betterSidebar?.getTab(typeId)
     if (descriptor?.badge === undefined) return null
-    let value: string | number | null | undefined
     try {
-      value = descriptor.badge(ctx, { sessionId, cwd }, state)
+      return descriptor.badge(ctx, { sessionId, cwd }, state)
     } catch (error) {
       console.error('[dsh-better-sidebar] tab badge error:', error)
       return null
     }
+  }
+
+  /** Render a badge value as a pill in the given class. */
+  const badgePillOf = (value: string | number | null | undefined, pillClass: string | undefined): ReactNode => {
     if (value === null || value === undefined || value === '') return null
     const text = typeof value === 'number' ? (value > 99 ? '99+' : String(value)) : String(value)
-    return <span className={css.tabBadge}>{text}</span>
+    return <span className={pillClass}>{text}</span>
+  }
+
+  /** The tab badge pill for one open tab (strip labels). */
+  const tabBadgeOf = (tab: SidebarTab): ReactNode => badgePillOf(badgeValueOf(tab.type), css.tabBadge)
+
+  /** The badge pill for one activity-bar icon (per type). */
+  const activityBadgeOf = (typeId: string): ReactNode => badgePillOf(badgeValueOf(typeId), css.activityBadge)
+
+  // The tab strip shows only file-preview/aux types (registry `hidden`):
+  // editor / diff / git-log and plugin-hidden types. Tool views live in the
+  // activity bar; without a registry (standalone/test) every tab shows.
+  const stripTabFilter = (tab: SidebarTab): boolean => {
+    const service = ctx.betterSidebar
+    if (service === undefined) return true
+    // Tool views live in the activity bar — EXCEPT the multi-instance ones:
+    // terminal and browser mint `:<n>` ids and are meant to be opened several
+    // at once, so their tabs must render in the strip for the user to
+    // see/switch/close/drag them (requirement: 终端默认靠下面打开、允许多开；浏览器同款).
+    return tab.type === 'terminal' || tab.type === 'browser'
+      || service.getTabs().some(descriptor => descriptor.hidden === true && descriptor.id === tab.type)
   }
 
   /**
@@ -877,6 +904,11 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
             getTabIcon={tabIconOf}
             getTabBadge={tabBadgeOf}
             getTabTitleClass={tabTitleClassOf}
+            stripTabFilter={stripTabFilter}
+            getActivityBadge={activityBadgeOf}
+            activityBarSide="right"
+            panelOpen={state.panelOpen}
+            onTogglePanel={() => { store.reduce(togglePanel) }}
           />
         </div>
         {/*
@@ -1003,6 +1035,9 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
             getTabIcon={tabIconOf}
             getTabBadge={tabBadgeOf}
             getTabTitleClass={tabTitleClassOf}
+            stripTabFilter={stripTabFilter}
+            getActivityBadge={activityBadgeOf}
+            showActivityBar={false}
           />
         </div>
       </div>

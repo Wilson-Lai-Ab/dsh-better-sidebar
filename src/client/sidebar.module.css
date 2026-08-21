@@ -113,6 +113,14 @@
     visibility 0s linear var(--ds-transition-duration-slow);
 }
 
+/* The activity bar stays visible + clickable while the panel is collapsed
+   (VS Code): clicking any icon expands the panel first so the open lands in
+   sight. The rest of the panel stays hidden. */
+.panelHidden .activityBar {
+  visibility: visible;
+  pointer-events: auto;
+}
+
 /* Width drags write at pointer cadence; easing would detach the edge. */
 .panel[data-dragging] {
   transition: none;
@@ -314,6 +322,94 @@
   min-width: 0;
   min-height: 0;
   display: flex;
+}
+
+/* The VS Code-style activity bar: a vertical rail of one icon per openable
+   tool view. The right panel hugs it to the RIGHT edge (content against the
+   chat); the bottom workbench hides it entirely (content only). */
+.activityBar {
+  flex: none;
+  width: var(--dsh-sidebar-rail-width, 44px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  background: var(--dsw-alias-bg-layer-1);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* The rail hugging the workbench's RIGHT edge (the right panel's default:
+   content against the chat, the icons at the far right). The divider flips
+   to the rail's inner (left) edge. */
+.activityBarRight {
+  border-right: none;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+
+.activityItem {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  outline: none;
+}
+
+.activityItem:hover,
+.activityItem:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.activityItem[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Active view: selected fill + a 2px accent bar at the rail's inner edge. */
+.activityActive,
+.activityActive:hover,
+.activityActive:focus-visible {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}
+
+.activityActive::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-brand-primary);
+}
+
+/* Badge pill (bottom-right) and hover close (top-right). */
+.activityBadge {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font: var(--dsw-font-xxxs-strong-11);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-brand-primary);
+  pointer-events: none;
 }
 
 .split {
