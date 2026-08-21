@@ -10,6 +10,8 @@
  */
 import type { api } from './api.ts'
 import {
+  clampCenterTabMax,
+  clampReviewDoneSessions,
   clampTerminalFontSize,
   clampTitleBarStrip,
   clampWidthPercent,
@@ -84,6 +86,15 @@ export function parsePrefs(value: unknown): SidebarPrefs {
     browserInterceptHttps: typeof record.browserInterceptHttps === 'boolean'
       ? record.browserInterceptHttps
       : SIDEBAR_PREFS_DEFAULTS.browserInterceptHttps,
+    centerTabOverflow: record.centerTabOverflow === 'wrap' || record.centerTabOverflow === 'scroll'
+      ? record.centerTabOverflow
+      : SIDEBAR_PREFS_DEFAULTS.centerTabOverflow,
+    centerTabMax: typeof record.centerTabMax === 'number' && Number.isFinite(record.centerTabMax)
+      ? clampCenterTabMax(record.centerTabMax)
+      : SIDEBAR_PREFS_DEFAULTS.centerTabMax,
+    reviewDoneSessionLimit: typeof record.reviewDoneSessionLimit === 'number' && Number.isFinite(record.reviewDoneSessionLimit)
+      ? clampReviewDoneSessions(record.reviewDoneSessionLimit)
+      : SIDEBAR_PREFS_DEFAULTS.reviewDoneSessionLimit,
     tabsEnabled: booleanMapOf(record.tabsEnabled),
     viewersEnabled: booleanMapOf(record.viewersEnabled),
     pluginSettings: pluginSettingsMapOf(record.pluginSettings),

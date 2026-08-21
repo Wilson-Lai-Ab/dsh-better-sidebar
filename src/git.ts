@@ -9,6 +9,8 @@
  * Commits use the user's git global identity untouched (never sets
  * user.name/user.email).
  */
+import { readdir } from 'node:fs/promises'
+import { basename, join, relative } from 'node:path'
 import { spawn } from 'node:child_process'
 
 /** A parsed `git status --porcelain=v1 -z` entry. */
@@ -18,10 +20,22 @@ export interface GitStatusEntry {
   xy: string
 }
 
+/** One git work tree discovered under the session workspace. */
+export interface GitRepoInfo {
+  /** Absolute path of the repository top level. */
+  root: string
+  /** Last path segment (picker label). */
+  name: string
+  /** Path relative to the session cwd (`'.'` when the cwd IS the repo). */
+  rel: string
+}
+
 /** The source-control panel snapshot. */
 export interface GitStatusResult {
   isRepo: boolean
   branch?: string
+  /** Absolute repository top level when `isRepo` (so the client can pin the picker). */
+  root?: string
   entries: GitStatusEntry[]
 }
 
@@ -143,20 +157,75 @@ export async function currentBranch(cwd: string): Promise<string> {
   return out.trim()
 }
 
+/** Directories skipped while walking for nested git roots. */
+const REPO_WALK_SKIP = new Set([
+  'node_modules', '.git', 'dist', 'lib', 'coverage', '.pnpm-store',
+  'target', 'build', '.next', '.turbo', 'out',
+])
+
+/** How deep to look for nested repositories under the session cwd. */
+const REPO_WALK_DEPTH = 4
+
+/** Cap so a huge monorepo walk cannot flood the picker. */
+const REPO_WALK_LIMIT = 50
+
+/** Discover git work trees at / under `cwd` (the cwd's own repo plus nested ones). */
+export async function listRepos(cwd: string): Promise<GitRepoInfo[]> {
+  const found = new Map<string, GitRepoInfo>()
+  const add = (root: string): void => {
+    if (found.has(root) || found.size >= REPO_WALK_LIMIT) return
+    const relRaw = relative(cwd, root).replace(/\\/g, '/')
+    const rel = relRaw === '' ? '.' : relRaw
+    found.set(root, { root, name: basename(root) || root, rel })
+  }
+
+  if (await isGitRepo(cwd)) {
+    try {
+      add(await repoRoot(cwd))
+    } catch {
+      add(cwd)
+    }
+  }
+
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (found.size >= REPO_WALK_LIMIT || depth > REPO_WALK_DEPTH) return
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    if (entries.some(entry => entry.name === '.git')) add(dir)
+    if (depth === REPO_WALK_DEPTH) return
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (REPO_WALK_SKIP.has(entry.name)) continue
+      if (entry.name.startsWith('.') && entry.name !== '.git') continue
+      await walk(join(dir, entry.name), depth + 1)
+    }
+  }
+  await walk(cwd, 0)
+  return [...found.values()].sort((a, b) => a.rel.localeCompare(b.rel))
+}
+
 /** Working-tree status (untracked included). */
 export async function status(cwd: string): Promise<GitStatusResult> {
   const repo = await isGitRepo(cwd)
   if (!repo) return { isRepo: false, entries: [] }
-  const [branch, raw] = await Promise.all([
+  const [branch, root, raw] = await Promise.all([
     currentBranch(cwd).catch(() => 'HEAD'),
+    repoRoot(cwd).catch(() => cwd),
     runGit(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']),
   ])
-  return { isRepo: true, branch, entries: parsePorcelainZ(raw) }
+  return { isRepo: true, branch, root, entries: parsePorcelainZ(raw) }
 }
+
+/** Unified-diff context lines for the source-control / review surfaces. */
+export const DIFF_CONTEXT_LINES = 30
 
 /** Diff text of the worktree (unstaged) or the index (staged). */
 export async function diff(cwd: string, path: string | undefined, staged: boolean): Promise<string> {
-  const args = ['diff', '--no-ext-diff', '--no-color', '-U3']
+  const args = ['diff', '--no-ext-diff', '--no-color', `-U${String(DIFF_CONTEXT_LINES)}`]
   if (staged) args.push('--cached')
   if (path !== undefined) args.push('--', path)
   return runGit(cwd, args)
@@ -165,6 +234,19 @@ export async function diff(cwd: string, path: string | undefined, staged: boolea
 /** Stage paths (all when path is undefined). */
 export async function stage(cwd: string, path: string | undefined): Promise<void> {
   await runGit(cwd, ['add', '-A', ...(path !== undefined ? ['--', path] : [])])
+}
+
+/** Stage tracked modifications and deletions only (`git add -u`) — untracked
+ *  files stay in their own bucket so the panel can keep the IDEA-style
+ *  "modified" vs "untracked" split. */
+export async function stageTracked(cwd: string): Promise<void> {
+  await runGit(cwd, ['add', '-u'])
+}
+
+/** Stage the given untracked paths in one batch (`git add -- <paths>`). */
+export async function stageUntracked(cwd: string, paths: string[]): Promise<void> {
+  if (paths.length === 0) return
+  await runGit(cwd, ['add', '--', ...paths])
 }
 
 /** Unstage paths (all when path is undefined). */
@@ -217,7 +299,10 @@ export async function show(cwd: string, rev: string, path: string): Promise<stri
  *  Merge commits show their diff against the first parent (`-m --first-parent`
  *  is a no-op for regular commits), so a history click always has content. */
 export async function commitDiff(cwd: string, hash: string): Promise<string> {
-  return runGit(cwd, ['show', '--no-ext-diff', '--no-color', '--format=', '-m', '--first-parent', hash])
+  return runGit(cwd, [
+    'show', '--no-ext-diff', '--no-color', '--format=',
+    `-U${String(DIFF_CONTEXT_LINES)}`, '-m', '--first-parent', hash,
+  ])
 }
 
 /** Discard the worktree changes of one path (`git checkout -- <path>`; the index is untouched). */

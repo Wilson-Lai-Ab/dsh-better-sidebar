@@ -15,6 +15,12 @@ import {
   TITLE_BAR_STRIP_DEFAULT,
   TITLE_BAR_STRIP_MAX,
   TITLE_BAR_STRIP_MIN,
+  CENTER_TAB_MAX_DEFAULT,
+  CENTER_TAB_MAX_MAX,
+  CENTER_TAB_MAX_MIN,
+  REVIEW_DONE_SESSIONS_DEFAULT,
+  REVIEW_DONE_SESSIONS_MAX,
+  REVIEW_DONE_SESSIONS_MIN,
   WIDTH_PERCENT_DEFAULT,
   WIDTH_PERCENT_MAX,
   WIDTH_PERCENT_MIN,
@@ -48,6 +54,14 @@ export interface SidebarConfig {
   terminalsPerSession?: number
   /** How long a disconnected terminal process survives awaiting a reconnect. */
   reconnectGraceMs?: number
+  /**
+   * Terminal shell (absolute path or bare executable name) for BOTH the UI
+   * terminal tabs and the model-facing `terminal_*` tools. Empty = auto:
+   * POSIX follows `$SHELL` then the account login shell; Windows follows
+   * `DSH_SIDEBAR_SHELL`, then probes for `pwsh.exe`, then falls back to the
+   * inbox `powershell.exe` (5.1).
+   */
+  shell?: string
 }
 
 /** Schemastery schema for the plugin configuration. */
@@ -57,6 +71,7 @@ export const Config: z<SidebarConfig> = z.object({
   listLimit: z.number().step(1).min(1).default(1000),
   terminalsPerSession: z.number().step(1).min(1).default(3),
   reconnectGraceMs: z.number().step(1).min(0).default(30_000),
+  shell: z.string().default(''),
 })
 
 /** Fully defaulted sidebar host settings. */
@@ -66,6 +81,7 @@ export interface ResolvedSidebarConfig {
   listLimit: number
   terminalsPerSession: number
   reconnectGraceMs: number
+  shell: string
 }
 
 /**
@@ -81,6 +97,7 @@ export function resolveSidebarConfig(config: SidebarConfig | undefined): Resolve
     listLimit: config?.listLimit ?? 1000,
     terminalsPerSession: config?.terminalsPerSession ?? 3,
     reconnectGraceMs: config?.reconnectGraceMs ?? 30_000,
+    shell: config?.shell?.trim() ?? '',
   }
 }
 
@@ -105,6 +122,9 @@ export const PrefsSchema: z<SidebarPrefs> = z.object({
   browserInterceptLinks: z.boolean().default(true),
   browserInterceptHttp: z.boolean().default(true),
   browserInterceptHttps: z.boolean().default(false),
+  centerTabOverflow: z.union([z.const('scroll'), z.const('wrap')]).default('scroll'),
+  centerTabMax: z.number().step(1).min(CENTER_TAB_MAX_MIN).max(CENTER_TAB_MAX_MAX).default(CENTER_TAB_MAX_DEFAULT),
+  reviewDoneSessionLimit: z.number().step(1).min(REVIEW_DONE_SESSIONS_MIN).max(REVIEW_DONE_SESSIONS_MAX).default(REVIEW_DONE_SESSIONS_DEFAULT),
   // Per-feature enable switches are OPEN maps (any tab/viewer id, built-in or
   // external): an absent key means enabled, so old documents resolve to {}
   // (everything on) with no migration. Non-boolean values fail validation.

@@ -1,0 +1,11 @@
+export {
+  presentFindHit,
+  scoreFileNameMatch,
+  shouldSkipFindDir,
+  treeOfFindHits,
+  type FileFindHit,
+  type FileNameMatch,
+  type FindHitPresentation,
+  type FindTreeFile,
+  type FindTreeNode,
+} from './fs-find-match.ts'

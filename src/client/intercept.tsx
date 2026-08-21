@@ -8,21 +8,45 @@
  */
 import { IconCodeOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../context-types.ts'
-import type { SidebarStore } from './state.ts'
+import { dockTabToCenter, findPaneOfTab, tabOpenIn, type SidebarStore, type SidebarTab } from './state.ts'
+import { focusLatestCenterView } from './conversation-views.tsx'
 import { t } from './locales.ts'
 import { resolveSidebarPath, selectProducedFiles } from './produced-files.ts'
 import { wrapOpenPath } from './openpath-intercept.ts'
 import css from './sidebar.module.css'
 
-/** Open a file in the sidebar's editor (used by the intercepted row and the explorer). */
-export function openSidebarFile(ctx: Context, store: SidebarStore, sessionId: string, path: string): void {
+function editorTabOf(ctx: Context, sessionId: string, path: string): SidebarTab {
   const summary = ctx.sessions.list.getSnapshot().byId[sessionId]
   const absolute = resolveSidebarPath(summary?.cwd, path)
   const at = Math.max(absolute.lastIndexOf('/'), absolute.lastIndexOf('\\'))
   const title = at === -1 ? absolute : absolute.slice(at + 1)
+  return { type: 'editor', title, path: absolute, id: `editor:${absolute}` }
+}
+
+/** Build the workspace-file editor tab for a (possibly relative) path. */
+export function editorTabForPath(ctx: Context, sessionId: string, path: string): SidebarTab {
+  return editorTabOf(ctx, sessionId, path)
+}
+
+/** Open a file in the sidebar's editor (used by the intercepted row and the explorer). */
+export function openSidebarFile(ctx: Context, store: SidebarStore, sessionId: string, path: string): void {
+  const tab = editorTabOf(ctx, sessionId, path)
   // Route through the sidebar service so the editor descriptor's dedupeKey
   // (per-path) applies; the id is path-derived so multiple editors coexist.
-  ctx.betterSidebar?.openTab({ type: 'editor', title, path: absolute, id: `editor:${absolute}` })
+  ctx.betterSidebar?.openTab({ type: tab.type, title: tab.title, path: tab.path, id: tab.id })
+}
+
+/** Double-click: dock the file onto the conversation header (对话 / 轨迹). */
+export function openSidebarFileAbove(ctx: Context, store: SidebarStore, sessionId: string, path: string): void {
+  const tab = editorTabOf(ctx, sessionId, path)
+  const prefs = store.getPrefs()
+  store.reduce((state) => {
+    const next = tabOpenIn(state, tab.id)
+      ? dockTabToCenter(state, findPaneOfTab(state, tab.id), tab.id, undefined, prefs.centerTabOverflow, prefs.centerTabMax)
+      : dockTabToCenter(state, 'seed', tab.id, tab, prefs.centerTabOverflow, prefs.centerTabMax)
+    return next
+  })
+  focusLatestCenterView(tab.title)
 }
 
 /** The intercepted produced-files row (visual twin of the deliverables chips). */

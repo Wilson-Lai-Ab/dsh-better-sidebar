@@ -46,9 +46,124 @@ body[data-dsh-sidebar-collapsed] [data-slot="conversation.session.header"] > hea
   padding-right: 78px;
 }
 
+/* Keep 对话 / 轨迹 in the host tablist (never steal React nodes).
+   Spacing lives inside each tab's padding so a sticky pin has no
+   gap for file-tab glyphs to show through. One hairline only: the
+   host header ::after — we do not paint a second divider. */
+[data-slot="conversation.session.header"] [role="tablist"] {
+  position: relative;
+  isolation: isolate;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+[data-slot="conversation.session.header"] [role="tablist"]::-webkit-scrollbar {
+  display: none;
+}
+
+[data-slot="conversation.session.header"] [role="tablist"] > [role="tab"] {
+  flex: none !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+[data-slot="conversation.session.header"] [role="tablist"] > [role="tab"][data-dsh-center-pin] {
+  position: sticky;
+  z-index: 4;
+  align-self: stretch;
+  box-sizing: border-box;
+  background: var(--dsh-pin-fill, var(--dsw-alias-bg-layer-1));
+}
+
+[data-slot="conversation.session.header"] [role="tablist"] > [role="tab"][data-dsh-center-pin]:first-of-type {
+  padding-left: 8px;
+  box-shadow: -32px 0 0 8px var(--dsh-pin-fill, var(--dsw-alias-bg-layer-1));
+}
+
+[data-slot="conversation.session.header"] [role="tab"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+[data-slot="conversation.session.header"] [role="tab"][data-dsh-center-pin]:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+body[data-dsh-center-tabs-wrap] [data-slot="conversation.session.header"] [role="tablist"] {
+  flex-wrap: wrap;
+  overflow-x: hidden;
+  overflow-y: visible;
+  row-gap: 6px;
+}
+
+body[data-dsh-center-tabs-wrap] [data-slot="conversation.session.header"] [role="tablist"] > [role="tab"][data-dsh-center-pin] {
+  position: static;
+  left: auto !important;
+}
+
+body[data-dsh-center-tabs-wrap] [data-slot="conversation.session.header"] > header {
+  height: auto;
+  min-height: 48px;
+  align-items: flex-start;
+}
+
 body[data-dsh-sidebar-dragging] #root,
 body[data-dsh-sidebar-dragging] #root > div[data-slot="root"] > div > div:nth-child(2) {
   transition: none;
+}
+
+/* DSH 0.1.x gives external settings sections a generic gear and exposes no
+   icon field in the settings.section contract. settings-nav-icon.ts marks
+   only this plugin's localized row; render the requested Lucide
+   gallery-horizontal-end SVG as a currentColor mask so it follows the native
+   nav hover/active colors without changing the shell's 16px icon rhythm. */
+[data-dsh-better-sidebar-settings-nav] > svg:first-child {
+  display: none;
+}
+
+[data-dsh-better-sidebar-settings-nav]::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 7v10'/%3E%3Cpath d='M6 5v14'/%3E%3Crect width='12' height='18' x='10' y='3' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 7v10'/%3E%3Cpath d='M6 5v14'/%3E%3Crect width='12' height='18' x='10' y='3' rx='2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* File chips in the composer: the backdrop is pointer-events:none, but the
+   click interceptor still treats them as links — show the pointer.
+   The host sizes a chip to one U+FFFC (~4em) and center-crops the 0.72
+   label. Paint the pill on the label itself (left-aligned, full name +
+   lines). composer-chip-layout.ts then pads the chip's inline box so the
+   next chip starts after this overflow instead of stacking on it. */
+[data-composer-card] [data-decoration="chip"] {
+  cursor: pointer;
+  background: transparent !important;
+}
+
+[data-composer-card] [data-decoration="chip"] > span {
+  left: 0 !important;
+  width: max-content !important;
+  max-width: none !important;
+  justify-content: flex-start !important;
+  overflow: visible !important;
+  transform: translateY(-50%) scale(0.72) !important;
+  transform-origin: left center !important;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #6187d838;
+}
+
+[data-composer-card] [data-decoration="chip"][data-invalid] > span {
+  background: #d8616133;
 }
 
 @media (prefers-reduced-motion: reduce) {

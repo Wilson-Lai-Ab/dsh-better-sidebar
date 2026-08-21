@@ -1,7 +1,7 @@
 /**
  * The tab strip of one pane: tabs capped at TAB_MAX_WIDTH (ellipsized),
  * overflow scrolls horizontally, a close button per tab, a four-way split
- * button cluster, and the + menu that opens new tabs (explorer / git /
+ * button cluster, and the + menu that opens new tabs (explorer / git / review /
  * terminal). Tabs are draggable; dropping onto another tab inserts before it,
  * dropping on the strip background appends to this pane.
  */
@@ -29,26 +29,46 @@ export const TAB_DRAG_TYPE = 'application/x-dsh-tab'
 export interface TabDragPayload {
   tabId: string
   paneId: string
+  /** History / file-row seed: drop opens this tab instead of moving an existing one. */
+  openTab?: SidebarTab
 }
 
 export function serializeDrag(payload: TabDragPayload): string {
   return JSON.stringify(payload)
 }
 
+function parseOpenTab(value: unknown): SidebarTab | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  if (typeof record.id !== 'string' || typeof record.type !== 'string' || typeof record.title !== 'string') {
+    return undefined
+  }
+  return value as SidebarTab
+}
+
 export function parseDrag(raw: string): TabDragPayload | null {
   try {
     const parsed = JSON.parse(raw) as TabDragPayload
-    if (typeof parsed.tabId === 'string' && typeof parsed.paneId === 'string') return parsed
-    return null
+    if (typeof parsed.tabId !== 'string' || typeof parsed.paneId !== 'string') return null
+    const openTab = parseOpenTab(parsed.openTab)
+    return openTab === undefined ? { tabId: parsed.tabId, paneId: parsed.paneId } : { tabId: parsed.tabId, paneId: parsed.paneId, openTab }
   } catch {
     return null
   }
 }
 
 /** Global tab-drag flag: PDF iframes become non-interactive synchronously. */
-function setTabDragging(active: boolean): void {
+export function setTabDragging(active: boolean): void {
   if (active) document.body.setAttribute('data-dsh-tab-dragging', '')
   else document.body.removeAttribute('data-dsh-tab-dragging')
+}
+
+/** Start a workbench / conversation-column drag that opens `tab` on drop. */
+export function beginOpenTabDrag(event: { dataTransfer: DataTransfer | null }, tab: SidebarTab): void {
+  if (event.dataTransfer === null) return
+  setTabDragging(true)
+  event.dataTransfer.setData(TAB_DRAG_TYPE, serializeDrag({ tabId: tab.id, paneId: 'seed', openTab: tab }))
+  event.dataTransfer.effectAllowed = 'copyMove'
 }
 
 export function TabBar(props: {
@@ -61,14 +81,18 @@ export function TabBar(props: {
   newTabOptions: NewTabOption[]
   /** Drop of a tab from any pane: (payload, insertBeforeTabId | null). */
   onDropTab: (payload: TabDragPayload, before: string | null) => void
+  /** Double-click a workbench tab: dock it onto the conversation header. */
+  onDockToCenter?: (tabId: string) => void
   /** Icon resolver for tab labels (reads from the tab descriptor registry). */
   getTabIcon?: (tab: SidebarTab) => ReactNode
   /** Badge resolver for tab labels (reads the descriptor's `badge`; the
    *  resolver returns the rendered pill or null). */
   getTabBadge?: (tab: SidebarTab) => ReactNode
+  /** Extra class on the tab title (git status color). */
+  getTabTitleClass?: (tab: SidebarTab) => string | undefined
 }) {
   const {
-    paneId, tabs, active, onActivate, onClose, onNewTab, newTabOptions, onDropTab, getTabIcon, getTabBadge,
+    paneId, tabs, active, onActivate, onClose, onNewTab, newTabOptions, onDropTab, onDockToCenter, getTabIcon, getTabBadge, getTabTitleClass,
   } = props
   const [menuOpen, setMenuOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -151,6 +175,12 @@ export function TabBar(props: {
               if (payload !== null) onDropTab(payload, tab.id)
             }}
             onClick={() => { onActivate(tab.id) }}
+            onDoubleClick={(event) => {
+              if (onDockToCenter === undefined) return
+              event.preventDefault()
+              event.stopPropagation()
+              onDockToCenter(tab.id)
+            }}
             onAuxClick={(event) => {
               // Middle-click closes the tab (and suppresses autoscroll).
               if (event.button === 1) {
@@ -161,7 +191,7 @@ export function TabBar(props: {
           >
             {getTabIcon?.(tab) ?? null}
             {getTabBadge?.(tab) ?? null}
-            <span className={css.tabTitle}>{tab.title}</span>
+            <span className={clsx(css.tabTitle, getTabTitleClass?.(tab))}>{tab.title}</span>
             <button
               type="button"
               className={css.tabClose}

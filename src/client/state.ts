@@ -22,8 +22,8 @@ export type TabType = string
 
 /** What a diff tab shows: a worktree/index change of one path, or one commit's full patch. */
 export type SidebarDiffRef =
-  | { kind: 'worktree'; path: string; staged: boolean; untracked?: boolean }
-  | { kind: 'commit'; hash: string; hashFull: string; subject: string }
+  | { kind: 'worktree'; path: string; staged: boolean; untracked?: boolean; repo?: string }
+  | { kind: 'commit'; hash: string; hashFull: string; subject: string; path?: string; repo?: string }
 
 /** One open tab. `path` carries the file (editor) or is absent (explorer/git);
  *  `diff` carries the change a diff tab shows; `meta` (v0.12.0+) carries
@@ -87,7 +87,17 @@ export interface SidebarState {
   /** The bottom panel's own split tree (panes/tabs live only in ONE tree;
    *  tabs never cross panels — the two panels only share panel-size drags). */
   bottomSplits: SplitNode
+  /**
+   * Tabs docked onto the conversation header (next to 对话 / 轨迹).
+   * They render as `conversation.view` entries, not in either workbench tree.
+   */
+  centerTabs: SidebarTab[]
+  /** Active conversation-header tab; null hides the center preview. */
+  centerActive: string | null
 }
+
+/** Synthetic pane id for tabs docked on the conversation header. */
+export const CENTER_PANE_ID = 'center'
 
 export const PANEL_MIN = 280
 export const PANEL_MAX = 640
@@ -136,6 +146,12 @@ function maxCounterId(parsed: unknown): number {
   }
   walk((parsed as Record<string, unknown> | null)?.splits)
   walk((parsed as Record<string, unknown> | null)?.bottomSplits)
+  const centerTabs = (parsed as Record<string, unknown> | null)?.centerTabs
+  if (Array.isArray(centerTabs)) {
+    for (const tab of centerTabs) {
+      if (tab !== null && typeof tab === 'object') consider((tab as Record<string, unknown>).id)
+    }
+  }
   return max
 }
 
@@ -167,6 +183,8 @@ export function makeDefaultState(width = PANEL_DEFAULT, panelOpen = true, seedEx
     bottomHeight: BOTTOM_DEFAULT,
     bottomOpenedOnce: false,
     bottomSplits: bottomLeaf,
+    centerTabs: [],
+    centerActive: null,
   }
 }
 
@@ -266,10 +284,31 @@ export function allLeaves(node: SplitNode): SidebarLeaf[] {
   return node.children.flatMap(allLeaves)
 }
 
+/** Locate a tab in either workbench tree or the conversation-header strip. */
+export function findTab(state: SidebarState, tabId: string): SidebarTab | undefined {
+  const center = state.centerTabs.find(tab => tab.id === tabId)
+  if (center !== undefined) return center
+  for (const leaf of allLeaves(state.splits).concat(allLeaves(state.bottomSplits))) {
+    const found = leaf.tabs.find(tab => tab.id === tabId)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/** Pane id hosting a tab, or the conversation-header strip. */
+export function findPaneOfTab(state: SidebarState, tabId: string): string {
+  if (state.centerTabs.some(tab => tab.id === tabId)) return CENTER_PANE_ID
+  for (const leaf of allLeaves(state.splits).concat(allLeaves(state.bottomSplits))) {
+    if (leaf.tabs.some(tab => tab.id === tabId)) return leaf.id
+  }
+  return state.activePane ?? firstLeaf(state.splits).id
+}
+
 /** Whether a tab exists anywhere in a state (either tree, any pane). */
 export function tabOpenIn(state: SidebarState, tabId: string): boolean {
   return allLeaves(state.splits).some(leaf => leaf.tabs.some(tab => tab.id === tabId))
     || allLeaves(state.bottomSplits).some(leaf => leaf.tabs.some(tab => tab.id === tabId))
+    || state.centerTabs.some(tab => tab.id === tabId)
 }
 
 /** Replace a leaf with a split of it plus a fresh empty leaf. */
@@ -329,69 +368,54 @@ export type DropZone = 'left' | 'right' | 'up' | 'down' | 'center'
  * The panes may live in DIFFERENT trees (dragging a tab between the two
  * panels): the tab then leaves its own tree and lands in the other one.
  */
+/**
+ * Resolve a workbench drag: either pull an existing tab, or mint a seed
+ * (git-history file / patch header). Same id already open is taken instead.
+ */
+export function takeDraggedTab(
+  state: SidebarState,
+  fromPane: string,
+  tabId: string,
+  seed?: SidebarTab,
+): { state: SidebarState; tab: SidebarTab } | undefined {
+  if (tabOpenIn(state, tabId)) return takeTab(state, findPaneOfTab(state, tabId), tabId)
+  if (seed !== undefined && seed.id === tabId) return { state, tab: seed }
+  return takeTab(state, fromPane, tabId)
+}
+
+/** Land a taken tab on a pane (merge or edge-split). */
+function landTabOnPane(state: SidebarState, tab: SidebarTab, toPane: string, zone: DropZone): SidebarState {
+  const toKey = treeOf(state, toPane)
+  if (zone === 'center') {
+    return {
+      ...state,
+      activePane: toPane,
+      [toKey]: mapLeaf(state[toKey], toPane, (leaf) => {
+        leaf.tabs = [...leaf.tabs, tab]
+        leaf.active = tab.id
+      }),
+    }
+  }
+  const dir = zone === 'left' || zone === 'right' ? 'row' : 'col'
+  const result = insertLeafAt(state[toKey], toPane, dir, tab, zone === 'left' || zone === 'up')
+  return { ...state, [toKey]: result.node, activePane: result.leafId }
+}
+
 export function moveTabToEdge(
   state: SidebarState,
   fromPane: string,
   tabId: string,
   toPane: string,
   zone: DropZone,
+  seed?: SidebarTab,
 ): SidebarState {
-  if (fromPane === toPane && zone === 'center') {
+  if (fromPane === toPane && zone === 'center' && seed === undefined) {
     // Dropped back onto its own pane's center: reorder to the end.
     return moveTab(state, fromPane, tabId, toPane, -1)
   }
-  const key = treeOf(state, fromPane)
-  const toKey = treeOf(state, toPane)
-  if (key !== toKey) {
-    // Cross-panel drop: remove the tab from its own tree, then merge (center)
-    // or split (edge) a pane of the OTHER tree with the tab.
-    const source = leafWithTab(state[key], tabId)
-    if (source === undefined) return state
-    const tab = source.tabs.find(candidate => candidate.id === tabId)!
-    let emptied = false
-    let sourceNode = mapLeaf(state[key], source.id, (leaf) => {
-      leaf.tabs = leaf.tabs.filter(candidate => candidate.id !== tabId)
-      if (leaf.active === tabId) leaf.active = leaf.tabs[leaf.tabs.length - 1]?.id ?? null
-      if (leaf.tabs.length === 0) emptied = true
-    })
-    if (emptied) sourceNode = removeLeafAt(sourceNode, source.id)
-    let targetNode = state[toKey]
-    let activePane: string
-    if (zone === 'center') {
-      targetNode = mapLeaf(targetNode, toPane, (leaf) => {
-        leaf.tabs = [...leaf.tabs, tab]
-        leaf.active = tab.id
-      })
-      activePane = toPane
-    } else {
-      const dir = zone === 'left' || zone === 'right' ? 'row' : 'col'
-      const result = insertLeafAt(targetNode, toPane, dir, tab, zone === 'left' || zone === 'up')
-      targetNode = result.node
-      activePane = result.leafId
-    }
-    return { ...state, [key]: sourceNode, [toKey]: targetNode, activePane }
-  }
-  const node = state[key]
-  const source = leafWithTab(node, tabId)
-  if (source === undefined) return state
-  const tab = source.tabs.find(candidate => candidate.id === tabId)!
-  let emptied = false
-  let splits = mapLeaf(node, source.id, (leaf) => {
-    leaf.tabs = leaf.tabs.filter(candidate => candidate.id !== tabId)
-    if (leaf.active === tabId) leaf.active = leaf.tabs[leaf.tabs.length - 1]?.id ?? null
-    if (leaf.tabs.length === 0) emptied = true
-  })
-  if (emptied) splits = removeLeafAt(splits, source.id)
-  if (zone === 'center') {
-    splits = mapLeaf(splits, toPane, (leaf) => {
-      leaf.tabs = [...leaf.tabs, tab]
-      leaf.active = tab.id
-    })
-    return { ...state, [key]: splits, activePane: toPane }
-  }
-  const dir = zone === 'left' || zone === 'right' ? 'row' : 'col'
-  const result = insertLeafAt(splits, toPane, dir, tab, zone === 'left' || zone === 'up')
-  return { ...state, [key]: result.node, activePane: result.leafId }
+  const taken = takeDraggedTab(state, fromPane, tabId, seed)
+  if (taken === undefined) return state
+  return landTabOnPane(taken.state, taken.tab, toPane, zone)
 }
 
 /**
@@ -414,6 +438,12 @@ export function removeLeafAt(node: SplitNode, paneId: string): SplitNode {
 
 /** Close a tab; an emptied leaf is removed (unless it is the only pane). */
 export function closeTab(state: SidebarState, paneId: string, tabId: string): SidebarState {
+  if (paneId === CENTER_PANE_ID || state.centerTabs.some(tab => tab.id === tabId)) {
+    const next = state.centerTabs.filter(tab => tab.id !== tabId)
+    if (next.length === state.centerTabs.length) return state
+    const centerActive = state.centerActive === tabId ? (next[next.length - 1]?.id ?? null) : state.centerActive
+    return { ...state, centerTabs: next, centerActive }
+  }
   const key = treeOf(state, paneId)
   let emptied = false
   const splits = mapLeaf(state[key], paneId, (leaf) => {
@@ -426,6 +456,9 @@ export function closeTab(state: SidebarState, paneId: string, tabId: string): Si
 
 /** Activate a tab in its pane (the pane's own tree). */
 export function activateTab(state: SidebarState, paneId: string, tabId: string): SidebarState {
+  if (paneId === CENTER_PANE_ID) {
+    return state.centerTabs.some(tab => tab.id === tabId) ? { ...state, centerActive: tabId } : state
+  }
   const key = treeOf(state, paneId)
   return {
     ...state,
@@ -465,7 +498,17 @@ export function patchTab(
   }
   const splits = walk(state.splits)
   const bottomSplits = walk(state.bottomSplits)
-  return changed ? { ...state, splits, bottomSplits } : state
+  const centerTabs = state.centerTabs.map(tab => {
+    if (tab.id !== tabId) return tab
+    changed = true
+    return {
+      ...tab,
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.path !== undefined ? { path: patch.path } : {}),
+      ...(patch.meta !== undefined ? { meta: patch.meta } : {}),
+    }
+  })
+  return changed ? { ...state, splits, bottomSplits, centerTabs } : state
 }
 
 /**
@@ -491,6 +534,9 @@ export function openTabInActivePane(state: SidebarState, tab: SidebarTab): Sideb
   }
   const targetKey = treeOf(state, targetId)
   // Id-based safety net: if a tab with the same id exists, focus it.
+  if (state.centerTabs.some(candidate => candidate.id === tab.id)) {
+    return activateTab(state, CENTER_PANE_ID, tab.id)
+  }
   for (const leaf of allLeaves(state.splits).concat(allLeaves(state.bottomSplits))) {
     const existing = leaf.tabs.find(candidate => candidate.id === tab.id)
     if (existing !== undefined) return activateTab(state, leaf.id, existing.id)
@@ -508,51 +554,16 @@ export function openTabInActivePane(state: SidebarState, tab: SidebarTab): Sideb
 /** Move a tab from one pane to another (insert at index; -1 appends).
  *  The panes may live in DIFFERENT trees — dragging a tab between the two
  *  panels removes it from its own tree and lands it in the other one. */
-export function moveTab(state: SidebarState, fromPane: string, tabId: string, toPane: string, index = -1): SidebarState {
-  const fromKey = treeOf(state, fromPane)
-  const toKey = treeOf(state, toPane)
-  if (fromKey !== toKey) {
-    let moved: SidebarTab | undefined
-    let emptied = false
-    const source = mapLeaf(state[fromKey], fromPane, (leaf) => {
-      const found = leaf.tabs.find(tab => tab.id === tabId)
-      if (found === undefined) return
-      moved = found
-      leaf.tabs = leaf.tabs.filter(tab => tab.id !== tabId)
-      if (leaf.active === tabId) leaf.active = leaf.tabs[leaf.tabs.length - 1]?.id ?? null
-      if (leaf.tabs.length === 0) emptied = true
-    })
-    if (moved === undefined) return state
-    const target = mapLeaf(state[toKey], toPane, (leaf) => {
-      const insertAt = index >= 0 && index <= leaf.tabs.length ? index : leaf.tabs.length
-      leaf.tabs = [...leaf.tabs.slice(0, insertAt), moved!, ...leaf.tabs.slice(insertAt)]
-      leaf.active = moved!.id
-    })
-    return {
-      ...state,
-      [fromKey]: emptied ? removeLeafAt(source, fromPane) : source,
-      [toKey]: target,
-      activePane: toPane,
-    }
-  }
-  let moved: SidebarTab | undefined
-  let emptied = false
-  let splits = mapLeaf(state[fromKey], fromPane, (leaf) => {
-    const found = leaf.tabs.find(tab => tab.id === tabId)
-    if (found === undefined) return
-    moved = found
-    leaf.tabs = leaf.tabs.filter(tab => tab.id !== tabId)
-    if (leaf.active === tabId) leaf.active = leaf.tabs[leaf.tabs.length - 1]?.id ?? null
-    if (leaf.tabs.length === 0) emptied = true
-  })
-  if (moved === undefined) return state
-  if (emptied) splits = removeLeafAt(splits, fromPane)
-  splits = mapLeaf(splits, toPane, (leaf) => {
+export function moveTab(state: SidebarState, fromPane: string, tabId: string, toPane: string, index = -1, seed?: SidebarTab): SidebarState {
+  const taken = takeDraggedTab(state, fromPane, tabId, seed)
+  if (taken === undefined) return state
+  const toKey = treeOf(taken.state, toPane)
+  const target = mapLeaf(taken.state[toKey], toPane, (leaf) => {
     const insertAt = index >= 0 && index <= leaf.tabs.length ? index : leaf.tabs.length
-    leaf.tabs = [...leaf.tabs.slice(0, insertAt), moved!, ...leaf.tabs.slice(insertAt)]
-    leaf.active = moved!.id
+    leaf.tabs = [...leaf.tabs.slice(0, insertAt), taken.tab, ...leaf.tabs.slice(insertAt)]
+    leaf.active = taken.tab.id
   })
-  return { ...state, [fromKey]: splits, activePane: toPane }
+  return { ...taken.state, [toKey]: target, activePane: toPane }
 }
 
 /** Split the active pane (or the pane containing the active tab). */
@@ -600,6 +611,29 @@ export function openDiffTab(state: SidebarState, sourcePaneId: string, tab: Side
   return { ...state, splits: result.node, activePane: result.leafId }
 }
 
+/**
+ * Open the git history log in the BOTTOM panel (same strip as the
+ * terminal). An existing instance is focused; otherwise the tab joins the
+ * bottom tree's first leaf and the panel expands.
+ */
+export function openHistoryTab(state: SidebarState, tab: SidebarTab): SidebarState {
+  const existing = leafWithTab(state.bottomSplits, tab.id) ?? leafWithTab(state.splits, tab.id)
+  if (existing !== undefined) {
+    const next = activateTab(state, existing.id, tab.id)
+    return treeOf(next, existing.id) === 'bottomSplits' ? { ...next, bottomOpen: true } : next
+  }
+  const leaf = firstLeaf(state.bottomSplits)
+  return {
+    ...state,
+    bottomOpen: true,
+    activePane: leaf.id,
+    bottomSplits: mapLeaf(state.bottomSplits, leaf.id, (node) => {
+      node.tabs = [...node.tabs, tab]
+      node.active = tab.id
+    }),
+  }
+}
+
 /** Toggle the panel open/closed (opening restores the previous layout). */
 export function togglePanel(state: SidebarState): SidebarState {
   return { ...state, panelOpen: !state.panelOpen }
@@ -608,6 +642,125 @@ export function togglePanel(state: SidebarState): SidebarState {
 /** Toggle the bottom panel open/closed (independent of the right panel). */
 export function toggleBottomPanel(state: SidebarState): SidebarState {
   return { ...state, bottomOpen: !state.bottomOpen }
+}
+
+/**
+ * Drop a tab onto the conversation column: open the bottom panel (if
+ * needed) and merge the tab into its first leaf. Used when the user
+ * drags a sidebar tab onto the chat / composer strip (not the header tabs).
+ */
+export function dockTabToBottom(state: SidebarState, fromPane: string, tabId: string, seed?: SidebarTab): SidebarState {
+  const leaf = firstLeaf(state.bottomSplits)
+  const next = moveTabToEdge(state, fromPane, tabId, leaf.id, 'center', seed)
+  return { ...next, bottomOpen: true }
+}
+
+/** Pull a tab out of either workbench tree (or the center strip). */
+function takeTab(state: SidebarState, fromPane: string, tabId: string): { state: SidebarState; tab: SidebarTab } | undefined {
+  const center = state.centerTabs.find(candidate => candidate.id === tabId)
+  if (center !== undefined) {
+    return {
+      state: {
+        ...state,
+        centerTabs: state.centerTabs.filter(candidate => candidate.id !== tabId),
+        centerActive: state.centerActive === tabId ? null : state.centerActive,
+      },
+      tab: center,
+    }
+  }
+  const key = treeOf(state, fromPane)
+  const source = leafWithTab(state[key], tabId)
+  if (source === undefined) return undefined
+  const tab = source.tabs.find(candidate => candidate.id === tabId)
+  if (tab === undefined) return undefined
+  let emptied = false
+  let node = mapLeaf(state[key], source.id, (leaf) => {
+    leaf.tabs = leaf.tabs.filter(candidate => candidate.id !== tabId)
+    if (leaf.active === tabId) leaf.active = leaf.tabs[leaf.tabs.length - 1]?.id ?? null
+    if (leaf.tabs.length === 0) emptied = true
+  })
+  if (emptied) node = removeLeafAt(node, source.id)
+  return { state: { ...state, [key]: node }, tab }
+}
+
+/**
+ * Dock a workbench tab onto the conversation header (对话 / 轨迹 strip).
+ * The tab leaves its pane and becomes a `conversation.view` entry.
+ */
+export function dockTabToCenter(
+  state: SidebarState,
+  fromPane: string,
+  tabId: string,
+  seed?: SidebarTab,
+  overflow?: 'scroll' | 'wrap',
+  max?: number,
+): SidebarState {
+  if (state.centerTabs.some(tab => tab.id === tabId)) return { ...state, centerActive: tabId }
+  const taken = takeDraggedTab(state, fromPane, tabId, seed)
+  if (taken === undefined) return state
+  const next = { ...taken.state, centerTabs: [...taken.state.centerTabs, taken.tab], centerActive: taken.tab.id }
+  return overflow === undefined || max === undefined ? next : trimCenterTabs(next, overflow, max)
+}
+
+/**
+ * Wrap-mode overflow: keep the newest `max` conversation-header tabs and
+ * drop the oldest. Scroll mode never trims.
+ */
+export function trimCenterTabs(state: SidebarState, overflow: 'scroll' | 'wrap', max: number): SidebarState {
+  if (overflow !== 'wrap') return state
+  const cap = Math.max(1, Math.round(max))
+  if (state.centerTabs.length <= cap) return state
+  const drop = state.centerTabs.length - cap
+  const next = state.centerTabs.slice(drop)
+  const centerActive = state.centerActive !== null && next.some(tab => tab.id === state.centerActive)
+    ? state.centerActive
+    : (next[next.length - 1]?.id ?? null)
+  return { ...state, centerTabs: next, centerActive }
+}
+
+/**
+ * Promote a conversation-header preview (SCM / git-history diff) into a
+ * workspace file editor sitting in the same header slot. An already-open
+ * editor of that path is focused (and docked to the header if it lived in
+ * a workbench pane); otherwise `editor` is seeded in place of `fromId`.
+ */
+export function promoteCenterTabToEditor(state: SidebarState, fromId: string, editor: SidebarTab): SidebarState {
+  if (state.centerTabs.some(tab => tab.id === fromId) === false) return state
+  if (fromId === editor.id && editor.type === 'editor') {
+    return { ...state, centerActive: editor.id }
+  }
+  let next: SidebarState = {
+    ...state,
+    centerTabs: state.centerTabs.filter(tab => tab.id !== fromId),
+    centerActive: state.centerActive === fromId ? null : state.centerActive,
+  }
+  if (tabOpenIn(next, editor.id)) {
+    return dockTabToCenter(next, findPaneOfTab(next, editor.id), editor.id)
+  }
+  return dockTabToCenter(next, 'seed', editor.id, editor)
+}
+
+/**
+ * Return a conversation-header tab to a workbench pane (right tree by default).
+ */
+export function undockTabFromCenter(state: SidebarState, tabId: string, toPane?: string): SidebarState {
+  const tab = state.centerTabs.find(candidate => candidate.id === tabId)
+  if (tab === undefined) return state
+  const next = {
+    ...state,
+    centerTabs: state.centerTabs.filter(candidate => candidate.id !== tabId),
+    centerActive: state.centerActive === tabId ? null : state.centerActive,
+  }
+  const targetId = toPane ?? firstLeaf(next.splits).id
+  const toKey = treeOf(next, targetId)
+  return {
+    ...next,
+    activePane: targetId,
+    [toKey]: mapLeaf(next[toKey], targetId, (leaf) => {
+      leaf.tabs = [...leaf.tabs, tab]
+      leaf.active = tab.id
+    }),
+  }
 }
 
 /** Set the panel width (clamped to the contract range; the upper bound is
@@ -694,7 +847,7 @@ export function reconcileAgentTerminals(
   state: SidebarState,
   agentTerminals: ReadonlyArray<{ uuid: string; title: string }>,
 ): SidebarState {
-  const existingTabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs)
+  const existingTabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs).concat(state.centerTabs)
   const existingAgentTabs = existingTabs.filter(tab => isAgentTabId(tab.id))
   const existingUuids = new Set(existingAgentTabs.map(tab => agentUuidOf(tab.id)))
   const serverUuids = new Set(agentTerminals.map(t => t.uuid))
@@ -703,16 +856,12 @@ export function reconcileAgentTerminals(
   if (toAdd.length === 0 && toRemove.length === 0) return state
   // Remove tabs whose uuids vanished from the server list (the agent closed
   // them, or the pty exited and was reaped). Reuse closeTab's leaf cleanup.
-  let splits = state.splits
+  let next: SidebarState = state
   for (const tab of toRemove) {
-    const leaf = leafWithTab(splits, tab.id)
-    if (leaf !== undefined) {
-      splits = closeTab({ ...state, splits }, leaf.id, tab.id).splits
-    }
+    next = closeTab(next, findPaneOfTab(next, tab.id), tab.id)
   }
   // Add tabs for new uuids (the agent created a terminal). They land in the
   // active pane via openTabInActivePane; the next reconcile is a no-op for them.
-  let next: SidebarState = { ...state, splits }
   for (const terminal of toAdd) {
     const tab: SidebarTab = {
       id: agentTabId(terminal.uuid),
@@ -826,6 +975,7 @@ export function sanitizeState(parsed: unknown): SidebarState | undefined {
   const bottomHeight = Math.min(bottomCap, Math.max(BOTTOM_MIN, Math.round(rawHeight)))
   const bottomSplits = sanitizeNode(record.bottomSplits, seen, reid)
     ?? { kind: 'leaf' as const, id: uid('pane'), tabs: [], active: null }
+  const centerTabs = sanitizeTabList(record.centerTabs)
   const maxWidth = typeof window !== 'undefined' ? window.innerWidth : Infinity
   return {
     panelOpen: record.panelOpen,
@@ -844,6 +994,10 @@ export function sanitizeState(parsed: unknown): SidebarState | undefined {
     // auto-terminal exactly once after the upgrade.
     bottomOpenedOnce: record.bottomOpenedOnce === true,
     bottomSplits,
+    centerTabs,
+    centerActive: typeof record.centerActive === 'string' && centerTabs.some(tab => tab.id === record.centerActive)
+      ? record.centerActive
+      : (centerTabs[centerTabs.length - 1]?.id ?? null),
   }
 }
 
@@ -865,6 +1019,29 @@ function uniqueNodeId(id: string, seen: Set<string>, reid: Map<string, string>):
   seen.add(fresh)
   reid.set(id, fresh)
   return fresh
+}
+
+/** Validate a flat tab list (conversation-header docks). Malformed entries drop the list. */
+function sanitizeTabList(value: unknown): SidebarTab[] {
+  if (!Array.isArray(value)) return []
+  const tabs: SidebarTab[] = []
+  const seen = new Set<string>()
+  for (const tab of value) {
+    if (tab === null || typeof tab !== 'object') continue
+    const candidate = tab as Record<string, unknown>
+    if (typeof candidate.id !== 'string' || typeof candidate.title !== 'string') continue
+    if (typeof candidate.type !== 'string' || candidate.type === 'diff') continue
+    if (seen.has(candidate.id)) continue
+    seen.add(candidate.id)
+    tabs.push({
+      id: candidate.id,
+      type: candidate.type,
+      title: candidate.title,
+      ...(typeof candidate.path === 'string' ? { path: candidate.path } : {}),
+      ...(candidate.meta !== undefined ? { meta: candidate.meta } : {}),
+    })
+  }
+  return tabs
 }
 
 /** Validate one split-tree node (leaf or split) and rebuild it cleanly. */
@@ -944,6 +1121,14 @@ export class SidebarStore {
   /** User-facing side card prefs seeding brand-new session states (defaults until the settings RPC resolves). */
   private prefs: SidebarPrefs = { ...SIDEBAR_PREFS_DEFAULTS }
 
+  constructor() {
+    // useSyncExternalStore(store.subscribe, store.getSnapshot) detaches
+    // the method; bind so `this.listeners` is never undefined.
+    this.subscribe = this.subscribe.bind(this)
+    this.getSnapshot = this.getSnapshot.bind(this)
+    this.getPrefs = this.getPrefs.bind(this)
+  }
+
   /**
    * Replace the side card prefs (the settings RPC result / settings page
    * write). Notifies like any store change: the snapshot carries the prefs,
@@ -958,7 +1143,7 @@ export class SidebarStore {
 
   /** The current side card prefs (seeds new sessions; persisted states win). */
   getPrefs(): SidebarPrefs {
-    return { ...this.prefs }
+    return this.prefs
   }
 
   /** Select a session (or none); loads its persisted state. */

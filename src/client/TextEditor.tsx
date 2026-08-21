@@ -9,11 +9,11 @@
  * The toolbar (mode toggle / dirty dot / save / status) renders as its own
  * row below the host's title bar, VSCode-style.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
-import { EditorState } from '@codemirror/state'
-import { EditorView as CodeMirrorView, keymap, lineNumbers } from '@codemirror/view'
+import { EditorState, StateEffect, StateField, type Text } from '@codemirror/state'
+import { Decoration, type DecorationSet, EditorView as CodeMirrorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { IconCheckOutline16, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { api, htmlUrl } from './api.ts'
@@ -21,8 +21,33 @@ import { languageForPath } from './lang.ts'
 import { cmSurfaceTheme, CmThemeCompartment } from './cm-themes.ts'
 import { isDarkScheme, subscribeColorScheme } from './theme.ts'
 import { SandboxStatusBar } from './SandboxStatusBar.tsx'
-import { appendToDraft } from './conversation-draft.ts'
-import { buildSelectionInsert, linesOfSelection } from './selection-payload.ts'
+import { insertFileRef } from './conversation-draft.ts'
+import { subscribeReveal, takeReveal, type RevealRange } from './editor-reveal.ts'
+import { fileRefOf, type FileRef, writeFileRefClipboard } from './file-ref.ts'
+import { linesOfSelection } from './selection-payload.ts'
+import { gitGutter, gutterLinesOfDiff, gutterLinesOfTexts, setGitGutter, type GutterLine } from './git-gutter.ts'
+import { gitFileTarget } from './git-repo.ts'
+import { badgeOf } from './git-status-style.ts'
+import { resolveSidebarPath } from './produced-files.ts'
+import {
+  ReviewHunkBar,
+  revertLastReview,
+  canRevertReview,
+  clearReviewHistory,
+  hunkAtLine,
+  hunksFromGutterLines,
+  hunksFromTexts,
+  hunksOfAllAdd,
+  hunksOfDiff,
+  reviewGutterPaint,
+  decisionOf,
+  hunkDecisionOf,
+  reviewRevision,
+  subscribeReview,
+  syncFileDecisionFromHunks,
+  useSessionEdits,
+  type ReviewHunk,
+} from './review/index.ts'
 import { t } from './locales.ts'
 import type { FileViewerProps } from './service.ts'
 import css from './sidebar.module.css'
@@ -30,9 +55,53 @@ import css from './sidebar.module.css'
 /** Previewable files (rendered output vs source editing). */
 type ViewMode = 'preview' | 'edit'
 
-/** The floating "add to conversation" action: payload + viewport anchor. */
+const setRevealEffect = StateEffect.define<RevealRange | null>()
+const revealLineDeco = Decoration.line({ class: 'dsh-reveal-line' })
+const revealMarkDeco = Decoration.mark({ class: 'dsh-reveal-mark' })
+
+function clampReveal(doc: Text, range: RevealRange): { startLine: number; endLine: number; from: number; to: number } {
+  const startLine = Math.min(Math.max(range.start, 1), doc.lines)
+  const endLine = Math.min(Math.max(range.end, startLine), doc.lines)
+  return { startLine, endLine, from: doc.line(startLine).from, to: doc.line(endLine).to }
+}
+
+const revealLineField = StateField.define<DecorationSet>({
+  create() { return Decoration.none },
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (!effect.is(setRevealEffect)) continue
+      const range = effect.value
+      if (range === null) return Decoration.none
+      const { startLine, endLine } = clampReveal(transaction.state.doc, range)
+      const marks = []
+      for (let number = startLine; number <= endLine; number += 1) {
+        marks.push(revealLineDeco.range(transaction.state.doc.line(number).from))
+      }
+      return Decoration.set(marks, true)
+    }
+    return value.map(transaction.changes)
+  },
+  provide: field => CodeMirrorView.decorations.from(field),
+})
+
+const revealMarkField = StateField.define<DecorationSet>({
+  create() { return Decoration.none },
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (!effect.is(setRevealEffect)) continue
+      const range = effect.value
+      if (range === null) return Decoration.none
+      const { from, to } = clampReveal(transaction.state.doc, range)
+      return to > from ? Decoration.set([revealMarkDeco.range(from, to)]) : Decoration.none
+    }
+    return value.map(transaction.changes)
+  },
+  provide: field => CodeMirrorView.decorations.from(field),
+})
+
+/** The floating "add to conversation" action: file chip + viewport anchor. */
 interface SelectionPopup {
-  insert: string
+  ref: FileRef
   left: number
   top: number
 }
@@ -66,6 +135,30 @@ export function TextEditor(props: FileViewerProps) {
   const popupRef = useRef<SelectionPopup | null>(null)
   /** The markdown preview container (selection-containment + line lookup). */
   const mdRef = useRef<HTMLDivElement>(null)
+  /** Last chip-opened span, so markdown preview can mark the same text. */
+  const [reveal, setReveal] = useState<RevealRange | null>(null)
+  const [hunks, setHunks] = useState<readonly ReviewHunk[]>([])
+  const [hunkHover, setHunkHover] = useState<{ hunk: ReviewHunk; top: number } | null>(null)
+  const [hunkTick, setHunkTick] = useState(0)
+  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision)
+  const { latest } = useSessionEdits(ctx, scope.sessionId, scope.cwd)
+  const absPath = resolveSidebarPath(scope.cwd, path)
+  const sessionEdit = latest.find(edit => edit.path === absPath || edit.path === path)
+  const fileDecided = sessionEdit !== undefined && decisionOf(scope.sessionId, sessionEdit.path, sessionEdit) !== undefined
+  const openedDecided = useRef<{ path: string; decided: boolean } | null>(null)
+  if (openedDecided.current === null || openedDecided.current.path !== absPath) {
+    openedDecided.current = { path: absPath, decided: fileDecided }
+  }
+  const paintPhase = !fileDecided ? 'pending' : openedDecided.current.decided ? 'revisit' : 'just-decided'
+  const pendingHunks = useMemo(
+    () => hunks.filter(hunk => hunkDecisionOf(scope.sessionId, absPath, hunk.key) === undefined),
+    [hunks, absPath, scope.sessionId, reviewTick],
+  )
+
+  useEffect(() => {
+    if (sessionEdit === undefined || fileDecided || hunks.length === 0) return
+    syncFileDecisionFromHunks(scope.sessionId, sessionEdit.path, hunks, sessionEdit)
+  }, [absPath, fileDecided, hunks, reviewTick, scope.sessionId, sessionEdit])
 
   const hidePopup = (): void => {
     popupRef.current = null
@@ -73,9 +166,9 @@ export function TextEditor(props: FileViewerProps) {
   }
 
   /** Anchor the popup above the selection center; clamp inside the viewport. */
-  const showPopup = (insert: string, left: number, top: number): void => {
+  const showPopup = (ref: FileRef, left: number, top: number): void => {
     const next: SelectionPopup = {
-      insert,
+      ref,
       left: Math.min(Math.max(left, 80), window.innerWidth - 80),
       top,
     }
@@ -83,23 +176,49 @@ export function TextEditor(props: FileViewerProps) {
     setPopup(next)
   }
 
-  /** The popup button's click: insert the stored payload into the draft. */
+  /** The popup button's click: mint a file chip in the composer. */
   const commitPopup = (): void => {
     const current = popupRef.current
     if (current === null) return
-    appendToDraft(ctx, scope.sessionId, current.insert)
+    insertFileRef(ctx, scope.sessionId, current.ref)
     hidePopup()
   }
 
+  const replaceDoc = (next: string): void => {
+    const view = viewRef.current
+    if (view === null || view.state.doc.toString() === next) return
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } })
+    setDraft(next)
+    setDirty(false)
+  }
+
+  const revertReview = (direction: 'undo' | 'redo'): boolean => {
+    if (!canRevertReview(scope.sessionId, absPath, direction)) return false
+    void revertLastReview(scope, absPath, direction).then((result) => {
+      if (!result.applied) return
+      if (typeof result.content === 'string') replaceDoc(result.content)
+      setHunkHover(null)
+      setHunkTick(tick => tick + 1)
+    })
+    return true
+  }
+  const revertReviewRef = useRef(revertReview)
+  revertReviewRef.current = revertReview
+
   useEffect(() => subscribeColorScheme(() => { setDark(isDarkScheme()) }), [])
 
-  // A new file (tab switch) starts clean: fresh preview mode, no draft.
+  // A new file (tab switch) starts clean. Markdown / HTML with pending
+  // review open in source so the user can see paints and Keep / Undo.
   useEffect(() => {
-    setMode('preview')
+    const reviewSource = sessionEdit !== undefined
+    setMode(reviewSource && (viewerId === 'markdown' || viewerId === 'html') ? 'edit' : 'preview')
     setDraft(null)
     setDirty(false)
     setSaveState('idle')
     hidePopup()
+    setReveal(null)
+    setHunks([])
+    setHunkHover(null)
   }, [content])
 
   // Create the CodeMirror editor once the content is loaded. The view owns
@@ -120,9 +239,12 @@ export function TextEditor(props: FileViewerProps) {
       extensions: [
         CodeMirrorView.lineWrapping,
         lineNumbers(),
+        ...gitGutter(),
         history(),
         EditorState.tabSize.of(2),
         CodeMirrorView.contentAttributes.of({ spellcheck: 'false' }),
+        revealLineField,
+        revealMarkField,
         cmSurfaceTheme,
         themeComp.of(dark),
         ...(language !== null ? [language] : []),
@@ -130,6 +252,9 @@ export function TextEditor(props: FileViewerProps) {
           if (update.docChanged) {
             setDraft(update.state.doc.toString())
             setDirty(true)
+            if (update.transactions.some(item => item.isUserEvent('input') || item.isUserEvent('delete'))) {
+              clearReviewHistory(scope.sessionId, absPath)
+            }
           }
         }),
         keymap.of([
@@ -138,14 +263,29 @@ export function TextEditor(props: FileViewerProps) {
             preventDefault: true,
             run: () => { save(); return true },
           },
+          {
+            key: 'Mod-z',
+            preventDefault: true,
+            run: () => revertReviewRef.current('undo'),
+          },
+          {
+            key: 'Mod-Shift-z',
+            preventDefault: true,
+            run: () => revertReviewRef.current('redo'),
+          },
+          {
+            key: 'Mod-y',
+            preventDefault: true,
+            run: () => revertReviewRef.current('redo'),
+          },
           ...defaultKeymap,
           ...historyKeymap,
         ]),
-        // Selection popup (the catch-all code viewer only): a non-empty
+        // Selection popup (the code and markdown editors): a non-empty
         // selection anchors the floating "add to conversation" button above
         // its head. Scrolling (geometry/viewport change) or losing focus
         // hides it; typing collapses the selection and hides it too.
-        ...(viewerId === 'code' ? [
+        ...(viewerId === 'code' || viewerId === 'markdown' ? [
           CodeMirrorView.updateListener.of((update) => {
             if (update.geometryChanged || update.viewportChanged) {
               hidePopup()
@@ -175,7 +315,7 @@ export function TextEditor(props: FileViewerProps) {
             }
             const doc = update.state.doc
             showPopup(
-              buildSelectionInsert(path, scope.cwd, {
+              fileRefOf(path, scope.cwd, {
                 start: doc.lineAt(sel.from).number,
                 end: doc.lineAt(sel.to).number,
               }, text),
@@ -198,6 +338,121 @@ export function TextEditor(props: FileViewerProps) {
     // effect below (recreating the view here would drop the draft).
   }, [content, path])
 
+  // IDEA-style git marks beside the line numbers (add / modify / delete).
+  useEffect(() => {
+    const view = viewRef.current
+    if (view === null) return
+    let cancelled = false
+    const apply = (lines: readonly GutterLine[], nextHunks: readonly ReviewHunk[]): void => {
+      if (cancelled || viewRef.current !== view) return
+      const hunkList = nextHunks.length > 0 ? nextHunks : hunksFromGutterLines(lines)
+      const decidedHunkKeys = new Set(
+        hunkList
+          .filter(hunk => hunkDecisionOf(scope.sessionId, absPath, hunk.key) !== undefined)
+          .map(hunk => hunk.key),
+      )
+      const painted = reviewGutterPaint({
+        phase: paintPhase,
+        lines,
+        hunks: hunkList,
+        decidedHunkKeys,
+      })
+      setHunks(paintPhase === 'pending' ? hunkList : [])
+      view.dispatch({ effects: setGitGutter.of(painted.lines as GutterLine[]) })
+    }
+    const allAdd = (): GutterLine[] => {
+      const lines: GutterLine[] = []
+      for (let line = 1; line <= view.state.doc.lines; line += 1) lines.push({ line, mark: 'add' })
+      return lines
+    }
+    void (async () => {
+      const target = await gitFileTarget(scope, absPath)
+      const status = await api.gitStatus(target.scope)
+      const file = absPath.replace(/\\/g, '/')
+      const entry = status.entries.find(item => item.path === target.gitPath || item.path === path || file.endsWith(`/${item.path}`))
+      if (entry !== undefined && badgeOf(entry) === '?' && sessionEdit?.kind === 'add') {
+        apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
+        return
+      }
+      const candidate = target.gitPath
+      const unstaged = await api.gitDiff(target.scope, candidate, false).catch(() => ({ diff: '' }))
+      const staged = unstaged.diff === ''
+        ? await api.gitDiff(target.scope, candidate, true).catch(() => ({ diff: '' }))
+        : unstaged
+      const text = (staged.diff !== '' ? staged : unstaged).diff
+      if (text !== '') {
+        apply(gutterLinesOfDiff(text), hunksOfDiff(text))
+        return
+      }
+      const shown = await api.gitShow(target.scope, candidate, 'HEAD').catch(() => ({ content: null }))
+      const current = view.state.doc.toString()
+      const before = shown.content ?? (typeof sessionEdit?.oldText === 'string' ? sessionEdit.oldText : null)
+      if (before === null) {
+        if (sessionEdit?.kind === 'add' || sessionEdit?.oldText === null) apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
+        else apply([], [])
+        return
+      }
+      const marks = gutterLinesOfTexts(before, current)
+      if (marks.length === 0 && before !== current && (sessionEdit?.kind === 'add' || sessionEdit?.oldText === null)) {
+        apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
+      } else {
+        apply(marks, hunksFromTexts(before, current))
+      }
+    })().catch(() => {
+      const current = view.state.doc.toString()
+      if (typeof sessionEdit?.oldText === 'string') {
+        apply(gutterLinesOfTexts(sessionEdit.oldText, current), hunksFromTexts(sessionEdit.oldText, current))
+        return
+      }
+      if (sessionEdit?.kind === 'add' || sessionEdit?.oldText === null) apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
+      else apply([], [])
+    })
+    return () => { cancelled = true }
+  }, [absPath, content, fileDecided, paintPhase, path, reviewTick, scope.sessionId, scope.cwd, hunkTick, sessionEdit?.kind, sessionEdit?.oldText])
+
+  useEffect(() => {
+    const host = hostRef.current
+    const view = viewRef.current
+    const sourceHidden = (viewerId === 'markdown' || viewerId === 'html') && mode === 'preview'
+    if (host === null || view === null || paintPhase !== 'pending' || pendingHunks.length === 0 || sourceHidden) {
+      setHunkHover(null)
+      return
+    }
+    const overBar = (target: EventTarget | null): boolean =>
+      target instanceof Element && target.closest(`.${css.reviewHunkBar}`) !== null
+    const onMove = (event: MouseEvent): void => {
+      if (overBar(event.target)) return
+      const block = view.lineBlockAtHeight(event.clientY - view.documentTop)
+      const line = view.state.doc.lineAt(block.from).number
+      const hunk = hunkAtLine(pendingHunks, line)
+      if (hunk === undefined) {
+        setHunkHover(null)
+        return
+      }
+      const coords = view.coordsAtPos(view.state.doc.line(hunk.paintStart).from)
+      const box = host.getBoundingClientRect()
+      const top = coords === null ? 8 : Math.max(8, Math.min(box.height - 36, coords.top - box.top))
+      setHunkHover(current => current !== null && current.hunk.key === hunk.key && Math.abs(current.top - top) < 1
+        ? current
+        : { hunk, top })
+    }
+    const onLeave = (event: MouseEvent): void => {
+      if (overBar(event.relatedTarget)) return
+      if (event.relatedTarget instanceof Node && host.contains(event.relatedTarget)) return
+      setHunkHover(null)
+    }
+    host.addEventListener('mousemove', onMove)
+    host.addEventListener('mouseleave', onLeave)
+    view.dom.addEventListener('mousemove', onMove)
+    view.dom.addEventListener('mouseleave', onLeave)
+    return () => {
+      host.removeEventListener('mousemove', onMove)
+      host.removeEventListener('mouseleave', onLeave)
+      view.dom.removeEventListener('mousemove', onMove)
+      view.dom.removeEventListener('mouseleave', onLeave)
+    }
+  }, [paintPhase, pendingHunks, mode, viewerId, content])
+
   // Scheme flip: re-theme in place (the compartment holds only the
   // scheme-dependent extensions; everything else is untouched).
   useEffect(() => {
@@ -212,8 +467,82 @@ export function TextEditor(props: FileViewerProps) {
   // flip also invalidates any anchored selection popup.
   useEffect(() => {
     hidePopup()
-    if (mode === 'edit') viewRef.current?.requestMeasure()
+    const view = viewRef.current
+    if (mode === 'edit') view?.requestMeasure()
+    if (mode === 'edit' && reveal !== null && view !== null) {
+      view.dispatch({ effects: setRevealEffect.of(reveal) })
+    }
+  }, [mode, reveal])
+
+  const lastMode = useRef(mode)
+  useEffect(() => {
+    if (lastMode.current !== 'edit' && mode === 'edit') setHunkTick(tick => tick + 1)
+    lastMode.current = mode
   }, [mode])
+
+  /** Composer chip click: jump to the requested span and mark it. */
+  useEffect(() => {
+    const apply = (): void => {
+      if (content === undefined && viewRef.current === null) return
+      const range = takeReveal(path)
+      if (range === undefined) return
+      setReveal(range)
+      if (viewerId === 'html') setMode('edit')
+      const go = (): void => {
+        const view = viewRef.current
+        if (view === null) {
+          window.requestAnimationFrame(go)
+          return
+        }
+        const { from, to } = clampReveal(view.state.doc, range)
+        view.dispatch({
+          selection: { anchor: from, head: to },
+          effects: [
+            setRevealEffect.of(range),
+            CodeMirrorView.scrollIntoView(from, { y: 'center' }),
+          ],
+        })
+        view.focus()
+      }
+      window.requestAnimationFrame(go)
+    }
+    apply()
+    return subscribeReveal(apply)
+  }, [path, content, viewerId])
+
+  useEffect(() => {
+    if (reveal === null || mode !== 'preview' || viewerId !== 'markdown') return
+    const host = mdRef.current
+    if (host === null) return
+    const existing = host.querySelector('mark[data-dsh-reveal]')
+    if (existing !== null) {
+      existing.scrollIntoView({ block: 'center' })
+      return
+    }
+    const snippet = reveal.selected?.trim()
+    if (snippet === undefined || snippet === '') return
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    while (node !== null) {
+      const text = node.textContent ?? ''
+      const at = text.indexOf(snippet)
+      if (at !== -1) {
+        try {
+          const marked = document.createElement('mark')
+          marked.dataset.dshReveal = ''
+          const range = document.createRange()
+          range.setStart(node, at)
+          range.setEnd(node, at + snippet.length)
+          range.surroundContents(marked)
+          marked.scrollIntoView({ block: 'center' })
+        } catch {
+          // Snippet crossed an element boundary — skip the preview mark.
+        }
+        return
+      }
+      node = walker.nextNode()
+    }
+  }, [reveal, mode, viewerId, content])
 
   const save = (): void => {
     const view = viewRef.current
@@ -261,7 +590,7 @@ export function TextEditor(props: FileViewerProps) {
     const rect = sel.getRangeAt(0).getBoundingClientRect()
     const lines = linesOfSelection(draft ?? content ?? '', text)
     showPopup(
-      buildSelectionInsert(path, scope.cwd, lines ?? undefined, text),
+      fileRefOf(path, scope.cwd, lines ?? undefined, text),
       rect.left + rect.width / 2,
       rect.top,
     )
@@ -300,7 +629,7 @@ export function TextEditor(props: FileViewerProps) {
           </div>
         )}
         {dirty && <span className={css.dirtyDot} title={t('unsaved')} />}
-        {editable && (
+        {editable && dirty && (
           <button
             type="button"
             className={css.iconButton}
@@ -319,7 +648,28 @@ export function TextEditor(props: FileViewerProps) {
           <div
             className={clsx(css.editorCm, (markdown || html) && mode === 'preview' && css.editorCmHidden)}
             ref={hostRef}
-          />
+            onCopy={(event) => {
+              const current = popupRef.current
+              if (current === null) return
+              writeFileRefClipboard(event.nativeEvent, current.ref)
+            }}
+          >
+            {paintPhase === 'pending' && hunkHover !== null && (
+              <ReviewHunkBar
+                scope={scope}
+                path={absPath}
+                hunk={hunkHover.hunk}
+                hunks={hunks}
+                edit={sessionEdit}
+                top={hunkHover.top}
+                onDone={(next) => {
+                  setHunkHover(null)
+                  if (next !== undefined) replaceDoc(next)
+                  setHunkTick(tick => tick + 1)
+                }}
+              />
+            )}
+          </div>
         </>
       )}
       {markdown && mode === 'preview' && (
@@ -328,6 +678,11 @@ export function TextEditor(props: FileViewerProps) {
           ref={mdRef}
           onMouseUp={handlePreviewMouseUp}
           onScroll={hidePopup}
+          onCopy={(event) => {
+            const current = popupRef.current
+            if (current === null) return
+            writeFileRefClipboard(event.nativeEvent, current.ref)
+          }}
         >
           {/* The fence copy-button labels must come from this plugin's own
               dictionary: the DSH MarkdownText/CodeBlock are cordis-free and

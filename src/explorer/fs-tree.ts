@@ -7,7 +7,7 @@
  */
 import { opendir } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { SidebarError } from './wire.ts'
+import { SidebarError } from '../wire.ts'
 
 /** One explorer row. */
 export interface SidebarFsEntry {
@@ -66,6 +66,51 @@ export async function listDirectory(path: string, maxEntries = 1000): Promise<Si
   }
   rows.sort(compareEntries)
   return { path, entries: rows, truncated: overflow > 0 }
+}
+
+/** Stop walking a single-child chain after this many hops (symlink loops). */
+const COMPACT_DEPTH = 32
+
+/**
+ * Collapse a directory that has exactly one subdirectory and nothing else
+ * into one row (`src/main/java/com`) — same idea as the git path tree.
+ * A folder with files or more than one child stays an expand point.
+ */
+export async function compactDirectoryEntry(
+  entry: SidebarFsEntry,
+  maxEntries = 1000,
+): Promise<SidebarFsEntry> {
+  if (!entry.isDir) return entry
+  const names = [entry.name]
+  let current = entry
+  for (let depth = 0; depth < COMPACT_DEPTH; depth += 1) {
+    let listing: SidebarFsListing
+    try {
+      listing = await listDirectory(current.path, maxEntries)
+    } catch {
+      break
+    }
+    if (listing.truncated || listing.entries.length !== 1) break
+    const only = listing.entries[0]
+    if (only === undefined || !only.isDir) break
+    names.push(only.name)
+    current = only
+  }
+  if (names.length === 1) return entry
+  return { ...current, name: names.join('/') }
+}
+
+/** Compact every directory row in a listing (the explorer `fs.tree` path). */
+export async function listDirectoryCompact(
+  path: string,
+  maxEntries = 1000,
+): Promise<SidebarFsListing> {
+  const listing = await listDirectory(path, maxEntries)
+  if (listing.truncated) return listing
+  const entries = await Promise.all(
+    listing.entries.map(entry => compactDirectoryEntry(entry, maxEntries)),
+  )
+  return { ...listing, entries }
 }
 
 /** The root row label of a listing: the last path segment (or the full path at the filesystem root). */

@@ -10,16 +10,29 @@
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
+/* Skinning contract (token-driven): every surface here consumes DSH's
+   generic tokens (`--dsw-alias-*`), NEVER `--dsw-specific-sidebar-fill` —
+   skin systems override that token to restyle the APP's own left-nav column
+   (dsh-web-ui skins make it translucent glass or theme colors, Aqua makes it
+   transparent), and a panel consuming it would lose its fill or clash with
+   the label tokens. The panels use the generic card surface
+   `--dsw-alias-bg-layer-1`, which every dsh-web-ui skin overrides — so
+   switching skins in the dsh-web-ui skin center re-skins the sidebar panels
+   automatically (see AGENTS.md §8). */
+
 /* The persistent expand/collapse cluster at the top-right corner: two rail
    controls side by side (bottom panel's glyph LEFT of the right panel's).
    Always pinned to the viewport corner — inside the right panel's top-right
    while it is open, sitting flush in the 34px tab strip (28px buttons at
-   top: 3) whose right end it really squeezes. */
+   top: 3) whose right end it really squeezes. z-index 45: above the panels
+   (40) but below the app's overlay stack (menus/tooltips/modals sit at
+   100+), so a cordis approval popup is never hidden behind the workbench
+   (issue #52). */
 .toggleCluster {
   position: fixed;
   top: 3px;
   right: 10px;
-  z-index: 55;
+  z-index: 45;
   display: flex;
   flex-direction: row;
   gap: 4px;
@@ -70,13 +83,19 @@
   /* Full height: the bottom panel squeezes only the center column, so the
      right panel never gives up any vertical position. */
   bottom: 0;
-  z-index: 50;
+  /* z-index 40: above the app's in-flow content, below the app's overlay
+     stack (100+), so menus/tooltips/modals always win over the panels
+     (issue #52). The toggle cluster (45) sits above it; the corner handle
+     is a child and stacks within the panel. */
+  z-index: 40;
   display: flex;
   flex-direction: column;
-  /* The native sidebar surface: bluish-50 over white / bluish-900 over dark,
-     exactly like the app's own sidebar column (SidebarRoot .root). */
-  background: var(--dsw-specific-sidebar-fill);
-  border-left: 1px solid var(--dsw-alias-border-l2);
+  /* The generic card surface (see the root contract above). Never
+     `--dsw-specific-sidebar-fill` — skin plugins restyle that token for the
+     app's own left nav and a panel consuming it loses its fill or clashes
+     with labels (#60/#105/#106). */
+  background: var(--dsw-alias-bg-layer-1);
+  border-left: 1px solid var(--dsw-alias-border-l1);
   /* Expand/collapse slides the panel; fullscreen animates the width. */
   transition:
     transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
@@ -101,6 +120,8 @@
 
 .panelResize {
   position: absolute;
+  /* Centered on the panel edge (an 8px hit strip straddling the border, the
+     same pattern as the host's own frame handles). */
   left: -4px;
   top: 0;
   bottom: 0;
@@ -127,14 +148,16 @@
    column only (the Sidebar shell writes left/right inline: from the app's
    own left sidebar to the right panel's left edge) — the sidebars never
    give up any position. Same surface as the right panel, with a top
-   hairline instead of the left one. */
+   hairline instead of the left one. z-index 40 mirrors the right panel
+   (issue #52: below the app's overlay stack so popups win over the
+   workbench). */
 .bottomPanel {
   position: fixed;
   bottom: 0;
-  z-index: 50;
+  z-index: 40;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-specific-sidebar-fill);
+  background: var(--dsw-alias-bg-layer-1);
   border-top: 1px solid var(--dsw-alias-border-l2);
   /* Expand/collapse slides the panel; height drags animate the height. */
   transition:
@@ -159,7 +182,7 @@
 }
 
 /* The bottom panel's height drag: the top edge strip (mirror of the right
-   panel's width strip). */
+   panel's width strip), centered on the border like the width strip. */
 .bottomResize {
   position: absolute;
   left: 0;
@@ -235,12 +258,18 @@
 /* The shared corner (both panels open): the intersection of the right
    panel's left edge and the bottom panel's top edge. Horizontal drags
    resize the width, vertical drags the height — the two panels drag
-   against each other. */
+   against each other. Rendered INSIDE the right panel and positioned
+   relative to it (left edge + the bottom panel's height from the layout
+   variable), so no JS-written viewport coordinates are involved. The
+   z-index is panel-local (above the panel's content; the panel itself sits
+   at 40, below the app's overlay stack). */
 .cornerHandle {
-  position: fixed;
+  position: absolute;
+  left: -6px;
+  bottom: calc(var(--dsh-sidebar-height, 0px) + 6px);
   width: 12px;
   height: 12px;
-  z-index: 52;
+  z-index: 2;
   cursor: nwse-resize;
   touch-action: none;
 }
@@ -408,6 +437,188 @@
   left: 0;
   right: 0;
   height: 25%;
+}
+
+/* Conversation header strip (对话 / 轨迹): drop here docks as a center view. */
+.headerStripDrop {
+  position: fixed;
+  z-index: 47;
+  box-sizing: border-box;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border: 2px dashed var(--dsw-alias-interactive-bg-hover-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-accent) 18%, transparent);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+}
+
+:global(body[data-dsh-tab-dragging]) .headerStripDrop {
+  display: flex;
+  pointer-events: auto;
+}
+
+/* Conversation-column drop target: only visible while a sidebar tab is dragged. */
+.conversationDrop {
+  position: fixed;
+  z-index: 46;
+  box-sizing: border-box;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border: 2px dashed var(--dsw-alias-interactive-bg-hover-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-accent) 18%, transparent);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+}
+
+:global(body[data-dsh-tab-dragging]) .conversationDrop {
+  display: flex;
+  pointer-events: auto;
+}
+
+.conversationDropActive {
+  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-accent) 32%, transparent);
+}
+
+/* Empty strip next to 对话 / 轨迹 — only while a sidebar tab is dragged. */
+.headerDrop {
+  display: none;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 72px;
+  margin: 2px 8px 2px 4px;
+  border: 1px dashed var(--dsw-alias-interactive-bg-hover-accent);
+  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  pointer-events: none;
+}
+
+:global(body[data-dsh-tab-dragging]) .headerDrop {
+  display: flex;
+  pointer-events: auto;
+}
+
+.headerDropActive {
+  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover-accent) 28%, transparent);
+  color: var(--dsw-alias-label-primary);
+}
+
+.centerView {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  /* Host viewArea is flex:1 0 auto / min-height:auto — explorer/editor
+     flex-fill children collapse to 0 without a definite box. */
+  min-height: min(640px, calc(100vh - 240px));
+  height: min(640px, calc(100vh - 240px));
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.centerViewBar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.centerViewAction {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.centerViewAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.centerPreview {
+  position: fixed;
+  /* Below the right panel (40) so the conversation/sidebar hairline stays
+     visible. Above in-flow chat so the docked file still covers the column. */
+  z-index: 39;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+  /* Start below the host 对话 / 轨迹 strip so those tabs stay clickable. */
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+:global([data-dsh-center-tab]) {
+  /* Host tab is padding 0 0 11px + 16px line — center-align drops × below the title. */
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-left: 2px;
+  padding-right: 2px;
+  border-radius: 6px 6px 0 0;
+}
+
+:global([data-dsh-center-tab]:hover) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+:global([data-dsh-center-label]) {
+  line-height: 16px;
+}
+
+.centerTabClose {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.centerTabClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.centerPreviewBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The host 对话 / 轨迹 strip already shows the file name; the in-body
+   path header is a duplicate when the editor is docked there. */
+.centerPreview .editorPathHeader,
+.centerView .editorPathHeader {
+  display: none;
 }
 
 .dropCenter {
@@ -631,6 +842,75 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.explorerFind {
+  flex: none;
+  padding: 0 8px 8px;
+}
+
+.explorerFindInput {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.explorerFindInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.explorerFindInput:focus {
+  outline: none;
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.explorerFindList {
+  display: flex;
+  flex-direction: column;
+}
+
+.explorerFindRow {
+  gap: 6px;
+}
+
+.explorerFindName {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorerFindLocation {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.explorerFindModule {
+  flex: none;
+  max-width: 28%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.explorerFindMark {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  padding: 0;
 }
 
 .explorerBody {
@@ -920,6 +1200,274 @@
   background: var(--dsw-alias-bg-base);
 }
 
+/* ── Agent change review ──────────────────────────────────────────────── */
+
+.reviewRoot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reviewToolbar,
+.reviewFilter,
+.reviewBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.reviewCount {
+  font: var(--dsw-font-xxs-strong-12);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reviewToolbarGrow,
+.reviewBarGrow {
+  flex: 1;
+}
+
+.reviewGhost,
+.reviewFilterBtn,
+.reviewFilterActive {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxxs-11);
+  cursor: pointer;
+}
+
+.reviewFilterActive,
+.reviewGhost:hover,
+.reviewFilterBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.reviewEmpty,
+.reviewError {
+  flex: none;
+  padding: 16px 12px;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reviewError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.reviewSession {
+  display: flex;
+  flex-direction: column;
+}
+
+.reviewSessionHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px 4px;
+}
+
+.reviewSessionTitle {
+  font: var(--dsw-font-xxs-strong-12);
+  color: var(--dsw-alias-label-primary);
+}
+
+.reviewSessionTime {
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reviewList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.reviewGroup {
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.reviewGroup:first-child {
+  border-top: none;
+}
+
+.reviewGroupHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 4px;
+}
+
+.reviewGroupMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.reviewGroupTurn {
+  font: var(--dsw-font-xxxs-strong-11);
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+}
+
+.reviewGroupCount {
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reviewGroupPrompt {
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.reviewRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.reviewMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reviewName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dsw-font-xxs-strong-12);
+}
+
+.reviewKind {
+  flex: none;
+  width: 20px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font: var(--dsw-font-xxxs-strong-11);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.reviewPrompt {
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewPath {
+  flex: none;
+  max-width: 42%;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reviewKeep,
+.reviewUndo {
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  font: var(--dsw-font-xxxs-strong-11);
+  cursor: pointer;
+}
+
+.reviewKeep {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.reviewUndo {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.reviewKeep:disabled,
+.reviewUndo:disabled,
+.reviewGhost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.reviewDone {
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reviewLoadMore {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 8px;
+  height: 28px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxxs-11);
+  cursor: pointer;
+}
+
+.reviewLoadMore:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.reviewLoadMore:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.reviewBarLabel {
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reviewBarError {
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-state-error-primary);
+}
+
 /* ── Browser tab ──────────────────────────────────────────────────────── */
 
 .browser {
@@ -1030,10 +1578,34 @@
 }
 
 .editorCm {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   background: transparent;
+}
+
+.reviewHunkBar {
+  position: absolute;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+  white-space: nowrap;
+}
+
+.reviewHunkError {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .editorCmHidden {
@@ -1048,6 +1620,16 @@
 
 .editorCm :global(.cm-editor.cm-focused) {
   outline: none;
+}
+
+/* Composer-chip reveal: the referenced line span in the editor. */
+.editorCm :global(.dsh-reveal-line) {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
+}
+
+.editorCm :global(.dsh-reveal-mark) {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 16%, transparent);
+  border-radius: 2px;
 }
 
 /* Preview / edit segmented toggle (markdown and other previewable files). */
@@ -1105,6 +1687,13 @@
   font: var(--dsw-font-xs-13);
 }
 
+.editorMd :global(mark[data-dsh-reveal]) {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 16%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 /* The floating "add to conversation" button anchored above a text
    selection in the preview/code viewers. Portalled to document.body and
    position:fixed, so the editor's overflow clips cannot crop it; flat
@@ -1129,6 +1718,25 @@
 
 .selectionPopup:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.chatFileChip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 2px 0;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: #6187d838;
+  color: inherit;
+  font: inherit;
+  line-height: 1.6;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.chatFileChip:hover {
+  background: #6187d860;
 }
 
 .editorPdf {
@@ -1297,10 +1905,11 @@
 .gitHeader {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  height: 36px;
-  padding: 0 8px 0 12px;
+  min-height: 36px;
+  padding: 4px 8px 4px 12px;
 }
 
 .gitBranchSelect {
@@ -1313,6 +1922,79 @@
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xxs-12);
+}
+
+.gitGroupSelect {
+  flex: none;
+  width: 88px;
+  min-width: 72px;
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.gitTreeDir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  cursor: pointer;
+  text-align: left;
+}
+
+.gitTreeDir:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitTreeDirName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitTreeChevron,
+.gitTreeChevronOpen {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent var(--dsw-alias-label-tertiary);
+}
+
+.gitTreeChevronOpen {
+  transform: rotate(90deg);
+}
+
+.gitTreeFile {
+  min-width: 0;
+}
+
+.gitTreeFile .gitRow {
+  margin: 0;
+  min-height: 28px;
+  padding: 0 4px 0 0;
+}
+
+.gitLogFileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitGroupHeader {
+  padding: 4px 16px 2px;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .gitSection {
@@ -1401,6 +2083,18 @@
   font: var(--dsw-font-s-14);
   color: var(--dsw-alias-label-primary);
 }
+
+/* Git status colors (token-driven, per skin-compat contract): green = staged
+   added, red = untracked, blue = modified/renamed, gray = deleted, orange =
+   conflict. Applied to both the status badge and the file path. */
+.gitAdded { color: var(--dsw-alias-state-success-primary); }
+.gitUntracked { color: var(--dsw-alias-state-error-primary); }
+.gitModified { color: var(--dsw-alias-state-business-primary); }
+.gitDeleted { color: var(--dsw-alias-label-tertiary); }
+.gitConflict { color: var(--dsw-alias-state-warn-primary); }
+
+/* Deleted files: strike through the path for a direct "removed" cue. */
+.gitDeletedText { text-decoration: line-through; }
 
 .gitEmpty {
   padding: 4px 12px 8px;
@@ -1622,40 +2316,171 @@
   cursor: default;
 }
 
-/* A history row: line 1 = hash + subject, line 2 = ref badges + author/date
-   (badges live on the second line so they never crowd the subject). */
+/* IDEA-style log table: one row = subject | author | date. */
+.gitLogTableHead,
 .gitLogRow {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 5px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px 88px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.gitLogTableHead {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 26px;
+  background: var(--dsw-alias-bg-layer-1);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font: var(--dsw-font-xxxs-strong-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gitLogRow {
+  text-align: left;
+  border: none;
+  background: transparent;
   cursor: pointer;
-  border-radius: 8px;
+  color: inherit;
+  border-radius: 0;
 }
 
 .gitLogRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.gitLogLine1 {
+.gitLogRowActive {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.gitLogPane {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.gitLogToolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.gitLogToolbarTitle {
+  font: var(--dsw-font-xxxs-strong-11);
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+}
+
+.gitLogSplit {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.gitLogList {
+  flex: none;
+  min-width: 180px;
+  overflow: auto;
+}
+
+.gitLogDetail {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gitLogDetailFoot {
+  flex: none;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.gitLogRefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.gitLogFiles {
+  flex: none;
+  min-height: 72px;
+  overflow: auto;
+}
+
+.gitLogFile {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 3px 8px 3px 0;
+  font: var(--dsw-font-xxs-12);
+  color: inherit;
+  cursor: grab;
+}
+
+.gitDiffFile[draggable='true'] {
+  cursor: grab;
+}
+
+.gitLogFile:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitLogFileActive {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.gitLogPatch {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.gitLogColSubject,
+.gitLogColAuthor,
+.gitLogColDate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitLogColSubject {
+  min-width: 0;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-primary);
+}
+
+.gitLogColAuthor {
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.gitLogColDate {
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-tertiary);
+  text-align: right;
 }
 
 .gitLogHash {
   flex: none;
   font: var(--dsw-font-markdown-code-block-small);
   color: var(--dsw-alias-label-tertiary);
-}
-
-.gitLogLine2 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex-wrap: wrap;
 }
 
 .gitLogRef {

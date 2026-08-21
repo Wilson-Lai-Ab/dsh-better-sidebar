@@ -20,6 +20,13 @@ import { RenderBoundary } from './RenderBoundary.tsx'
 import { registerOpenPathInterception, registerTurnTailInterception } from './intercept.tsx'
 import { registerLinkInterception } from './link-intercept.ts'
 import { registerImeGuard } from './ime-guard.ts'
+import { registerComposerFileDrop } from './composer-file-drop.ts'
+import { registerComposerChipCaret } from './composer-chip-caret.ts'
+import { registerComposerChipLayout } from './composer-chip-layout.ts'
+import { registerChatFileChips } from './chat-file-chips.ts'
+import { registerConversationViews } from './conversation-views.tsx'
+import { registerFileTriggerSource } from './file-trigger.ts'
+import { registerSettingsNavIcon } from './settings-nav-icon.ts'
 import { loadPrefs } from './prefs.ts'
 import { SideCardSection } from './SideCardSection.tsx'
 import { api } from './api.ts'
@@ -211,6 +218,88 @@ export function apply(ctx: Context): void {
         }
       },
       'dsh-better-sidebar: IME composition guard',
+    )
+
+    ctx.effect(
+      () => {
+        try {
+          return registerFileTriggerSource(ctx)
+        } catch (error) {
+          fail('file trigger', error)
+          return undefined
+        }
+      },
+      'dsh-better-sidebar: file reference source',
+    )
+
+    ctx.effect(
+      () => {
+        try {
+          return registerComposerFileDrop(ctx)
+        } catch (error) {
+          fail('file drop', error)
+          return undefined
+        }
+      },
+      'dsh-better-sidebar: composer file drop',
+    )
+
+    ctx.effect(
+      () => {
+        try {
+          return registerComposerChipCaret(ctx)
+        } catch (error) {
+          fail('chip caret', error)
+          return undefined
+        }
+      },
+      'dsh-better-sidebar: composer chip caret',
+    )
+
+    ctx.effect(
+      () => {
+        try {
+          return registerComposerChipLayout(ctx)
+        } catch (error) {
+          fail('chip layout', error)
+          return undefined
+        }
+      },
+      'dsh-better-sidebar: composer chip layout',
+    )
+
+    ctx.effect(
+      () => {
+        try {
+          return registerConversationViews(ctx, sidebarStore)
+        } catch (error) {
+          fail('conversation views', error)
+          return undefined
+        }
+      },
+      'dsh-better-sidebar: conversation header views',
+    )
+
+    ctx.effect(
+      () => {
+        try {
+          return registerChatFileChips(ctx)
+        } catch (error) {
+          fail('chat file chips', error)
+          return undefined
+        }
+      },
+      'dsh-better-sidebar: chat file chips',
+    )
+
+    // DSH 0.1.x does not yet carry an icon through the settings.section
+    // registration contract: its shell renders a generic gear for every
+    // external section. Mark only this plugin's localized nav row so
+    // layout.css can paint the requested Side card SVG; the disposer clears
+    // the marker for HMR / plugin disable.
+    ctx.effect(
+      () => registerSettingsNavIcon(() => t('settingsNav')),
+      'dsh-better-sidebar: settings navigation icon',
     )
 
     // The "Side card" settings section: appears in the DSH Settings shell

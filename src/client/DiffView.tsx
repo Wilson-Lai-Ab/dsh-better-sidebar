@@ -9,8 +9,10 @@
  * The parser is a pure function (`parseUnifiedDiff`) so the interesting
  * cases are unit-tested without a DOM.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
+import type { Context } from '../context-types.ts'
+import { locateDiffSelection, SelectionQuote } from './SelectionQuote.tsx'
 import { t } from './locales.ts'
 import css from './sidebar.module.css'
 
@@ -177,9 +179,17 @@ export interface DiffViewProps {
   /** Untracked-file content: when present, renders as a full-file addition instead of parsing. */
   untrackedPath?: string
   untrackedContent?: string
+  /** When set, selecting diff text offers "add to conversation". */
+  ctx?: Context
+  sessionId?: string
+  cwd?: string
+  /** Drag the path header onto a workbench / conversation drop target. */
+  onDragFile?: (event: { dataTransfer: DataTransfer | null }, path: string) => void
+  /** Double-click the path header (dock onto the conversation strip). */
+  onOpenFileAbove?: (path: string) => void
 }
 
-export function DiffView({ diff, untrackedPath, untrackedContent }: DiffViewProps) {
+export function DiffView({ diff, untrackedPath, untrackedContent, ctx, sessionId, cwd, onDragFile, onOpenFileAbove }: DiffViewProps) {
   const parsed = useMemo<ParsedDiff>(() => {
     if (untrackedPath !== undefined) {
       return { files: [untrackedFile(untrackedPath, untrackedContent ?? '')] }
@@ -187,6 +197,8 @@ export function DiffView({ diff, untrackedPath, untrackedContent }: DiffViewProp
     return parseUnifiedDiff(diff)
   }, [diff, untrackedPath, untrackedContent])
   const [expanded, setExpanded] = useState(false)
+  const [host, setHost] = useState<HTMLDivElement | null>(null)
+  const hostRef = useCallback((node: HTMLDivElement | null) => { setHost(node) }, [])
 
   // Flatten into display rows so the cap can slice a single list.
   const rows = useMemo(() => {
@@ -218,8 +230,16 @@ export function DiffView({ diff, untrackedPath, untrackedContent }: DiffViewProp
       const tag = fileTag(row.file)
       const from = displayPath(row.file.oldPath)
       const to = displayPath(row.file.newPath)
+      const path = to === '/dev/null' ? from : to
       return (
-        <div key={row.key} className={css.gitDiffFile}>
+        <div
+          key={row.key}
+          className={css.gitDiffFile}
+          draggable={onDragFile !== undefined}
+          onDragStart={onDragFile === undefined ? undefined : (event) => { onDragFile(event, path) }}
+          onDragEnd={onDragFile === undefined ? undefined : () => { document.body.removeAttribute('data-dsh-tab-dragging') }}
+          onDoubleClick={onOpenFileAbove === undefined ? undefined : () => { onOpenFileAbove(path) }}
+        >
           <span className={css.gitDiffFilePath}>{to}</span>
           {from !== to && <span className={css.gitDiffFileOld}>← {from}</span>}
           {tag !== null && <span className={css.gitDiffFileTag}>{tag}</span>}
@@ -237,8 +257,15 @@ export function DiffView({ diff, untrackedPath, untrackedContent }: DiffViewProp
     }
     const line = row.line!
     const lineClass = line.kind === 'del' ? css.gitDiffDel : line.kind === 'add' ? css.gitDiffAdd : line.kind === 'meta' ? css.gitDiffMeta : css.gitDiffCtx
+    const path = displayPath(row.file.newPath === '/dev/null' ? row.file.oldPath : row.file.newPath)
+    const lineNo = line.newNum ?? line.oldNum
     return (
-      <div key={row.key} className={clsx(css.gitDiffLine, lineClass)}>
+      <div
+        key={row.key}
+        className={clsx(css.gitDiffLine, lineClass)}
+        data-diff-path={path}
+        data-diff-line={lineNo ?? undefined}
+      >
         {line.kind === 'meta'
           ? <span className={css.gitDiffMetaText}>{line.text}</span>
           : (
@@ -253,7 +280,7 @@ export function DiffView({ diff, untrackedPath, untrackedContent }: DiffViewProp
   }
 
   return (
-    <div className={css.gitDiff}>
+    <div ref={hostRef} className={css.gitDiff} data-diff-fallback-path={untrackedPath}>
       {head.map(renderRow)}
       {hidden > 0 && (
         <button type="button" className={css.gitDiffExpand} aria-expanded={expanded} onClick={() => { setExpanded(value => !value) }}>
@@ -261,6 +288,9 @@ export function DiffView({ diff, untrackedPath, untrackedContent }: DiffViewProp
         </button>
       )}
       {tail.map(renderRow)}
+      {ctx !== undefined && sessionId !== undefined && (
+        <SelectionQuote ctx={ctx} sessionId={sessionId} cwd={cwd} host={host} locate={locateDiffSelection} />
+      )}
     </div>
   )
 }

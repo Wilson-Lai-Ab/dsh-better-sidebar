@@ -1,6 +1,6 @@
 /**
- * The 7 built-in tab descriptors: the plugin registers its own pages
- * (explorer / git / terminal / browser / subagent / editor / diff) through
+ * The 9 built-in tab descriptors: the plugin registers its own pages
+ * (explorer / git / review / terminal / browser / subagent / editor / diff / git-log) through
  * the same {@link BetterSidebarService} external plugins use — eating its
  * own dogfood. The terminal descriptor owns its quota (`TERMINAL_LIMIT`)
  * and mints `terminal:<n>` ids through `createTab`; the browser mints
@@ -10,15 +10,18 @@ import { IconBranchOutline16, IconCodeOutline16, IconFolderOpen16, IconThinkOutl
 import type { Context } from '../../context-types.ts'
 import { allLeaves, isAgentTabId, type SidebarState } from '../state.ts'
 import { t } from '../locales.ts'
-import { openSidebarFile } from '../intercept.tsx'
-import { ExplorerView } from '../ExplorerView.tsx'
+import { openSidebarFile, openSidebarFileAbove } from '../intercept.tsx'
+import { ExplorerView } from '../explorer/index.ts'
 import { EditorHost } from '../EditorHost.tsx'
 import { lazyChunkComponent } from '../lazy-chunk.tsx'
 import { GitView } from '../GitView.tsx'
+import { ReviewView, collectSessionEdits, latestSessionEdits, pendingCount } from '../review/index.ts'
+import { GitLogView } from '../GitLogView.tsx'
 import { DiffTab } from '../DiffTab.tsx'
 import { SubagentView } from '../SubagentView.tsx'
 import { BrowserView } from '../BrowserView.tsx'
-import { IconTerminalOutline16, IconDiffOutline16, IconGlobeOutline16 } from '../icons.tsx'
+import { IconTerminalOutline16, IconDiffOutline16, IconGlobeOutline16, IconHistoryOutline16, IconReviewOutline16 } from '../icons.tsx'
+
 import { TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN } from '../../prefs-shared.ts'
 import type { ComponentType } from 'react'
 import type { SessionScope } from '../api.ts'
@@ -55,7 +58,9 @@ export const TERMINAL_LIMIT = 3
 /** Count UI-owned terminals (agent:` tabs excluded — they are the model's). */
 function uiTerminalCount(state: SidebarState): number {
   return allLeaves(state.splits)
+    .concat(allLeaves(state.bottomSplits))
     .flatMap(leaf => leaf.tabs)
+    .concat(state.centerTabs)
     .filter(tab => tab.type === 'terminal' && !isAgentTabId(tab.id)).length
 }
 
@@ -86,6 +91,7 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
           expanded={expanded ?? []}
           onToggle={onToggleDir ?? (() => { /* no-op */ })}
           onOpenFile={(path) => { openSidebarFile(ctx, store, scope.sessionId, path) }}
+          onOpenFileAbove={(path) => { openSidebarFileAbove(ctx, store, scope.sessionId, path) }}
           onReferenceFile={onReferenceFile ?? (() => { /* no-op */ })}
         />
       ),
@@ -99,8 +105,44 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
       component: ({ ctx, store, scope, onOpenDiff }) => (
         <GitView
           scope={scope}
+          store={store}
           onOpenFile={(path) => { openSidebarFile(ctx, store, scope.sessionId, path) }}
           onOpenDiff={onOpenDiff ?? (() => { /* no-op */ })}
+        />
+      ),
+    },
+    {
+      id: 'review',
+      title: () => t('review'),
+      icon: (size: number) => <IconReviewOutline16 size={size} />,
+      order: 25,
+      single: true,
+      badge: (ctx, scope) => {
+        const nodes = ctx.sessions.binding?.(scope.sessionId)?.session.getSnapshot().nodes ?? []
+        try {
+          const count = pendingCount(scope.sessionId, latestSessionEdits(collectSessionEdits(nodes, scope.cwd)))
+          return count === 0 ? null : count
+        } catch {
+          return null
+        }
+      },
+      component: ({ ctx, store, scope }) => (
+        <ReviewView ctx={ctx} store={store} scope={scope} />
+      ),
+    },
+    {
+      id: 'git-log',
+      title: () => t('history'),
+      icon: (size: number) => <IconHistoryOutline16 size={size} />,
+      order: -1,
+      hidden: true,
+      dedupeKey: (tab) => tab.id,
+      component: ({ ctx, store, scope, tab }) => (
+        <GitLogView
+          ctx={ctx}
+          store={store}
+          scope={{ ...scope, repo: typeof tab.meta === 'string' ? tab.meta : undefined }}
+          repo={typeof tab.meta === 'string' ? tab.meta : undefined}
         />
       ),
     },
@@ -227,9 +269,9 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
       order: -1,
       hidden: true,
       dedupeKey: (tab) => tab.id,
-      component: ({ scope, tab }) => (
+      component: ({ ctx, scope, tab }) => (
         tab.diff === undefined ? null
-          : <DiffTab sessionId={scope.sessionId} cwd={scope.cwd} diff={tab.diff} />
+          : <DiffTab ctx={ctx} sessionId={scope.sessionId} cwd={scope.cwd} diff={tab.diff} />
       ),
     },
   ]

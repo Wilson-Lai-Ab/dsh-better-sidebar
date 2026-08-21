@@ -22,7 +22,7 @@
 import type { ReactNode } from 'react'
 import type { Context } from '../context-types.ts'
 import {
-  activateTab as activateTabReducer, allLeaves, closeTab as closeTabReducer, leafWithTab,
+  activateTab as activateTabReducer, allLeaves, CENTER_PANE_ID, closeTab as closeTabReducer, dockTabToCenter, findTab,
   openTabInActivePane, patchTab, tabOpenIn, togglePanel, treeOf,
   type SidebarSnapshot, type SidebarState, type SidebarStore, type SidebarTab,
 } from './state.ts'
@@ -574,7 +574,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
         const result = descriptor.createTab(state)
         if (result === null) return state
         tab = result.tab
-        next = applyDedupe(state, result.tab, descriptor)
+        next = applyDedupe(state, result.tab, descriptor, store.getPrefs())
         if (result.patch !== undefined) next = { ...next, ...result.patch }
       } else {
         tab = {
@@ -587,7 +587,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
           ...(seed.diff !== undefined ? { diff: seed.diff } : {}),
           ...(seed.meta !== undefined ? { meta: seed.meta } : {}),
         }
-        next = applyDedupe(state, tab, descriptor)
+        next = applyDedupe(state, tab, descriptor, store.getPrefs())
       }
       // Classify the landing against the INPUT state FIRST: a FOCUS fires
       // onActivate with the tab that is active NOW; a real creation fires
@@ -598,7 +598,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
       // tab that never closes.
       const dedupeKey = descriptor.dedupeKey ?? (descriptor.single === true ? () => descriptor.id : undefined)
       const key = dedupeKey?.(tab)
-      const inputTabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs)
+      const inputTabs = allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(leaf => leaf.tabs).concat(state.centerTabs)
       const existedByKey = key !== undefined
         && inputTabs.some(candidate => candidate.type === tab.type && dedupeKey!(candidate) === key)
       const existedById = tabOpenIn(state, tab.id)
@@ -618,12 +618,12 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
       if (isCreation) {
         // Resolve the ACTUAL landed tab — the url patch mints a new object,
         // so the callback must see the tab that was really inserted.
-        const landedTabs = allLeaves(landed.splits).concat(allLeaves(landed.bottomSplits)).flatMap(leaf => leaf.tabs)
+        const landedTabs = allLeaves(landed.splits).concat(allLeaves(landed.bottomSplits)).flatMap(leaf => leaf.tabs).concat(landed.centerTabs)
         created = landedTabs.find(candidate => candidate.id === tab.id) ?? tab
       } else {
         // A focus happened: resolve the tab that is actually active now and
         // report THAT to onActivate (never the caller's un-inserted seed).
-        const candidates = allLeaves(landed.splits).concat(allLeaves(landed.bottomSplits)).flatMap(leaf => leaf.tabs)
+        const candidates = allLeaves(landed.splits).concat(allLeaves(landed.bottomSplits)).flatMap(leaf => leaf.tabs).concat(landed.centerTabs)
         activated = key !== undefined
           ? candidates.find(candidate => candidate.type === tab.type && dedupeKey!(candidate) === key)
           : candidates.find(candidate => candidate.id === tab.id)
@@ -647,6 +647,8 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
       ) {
         if (isNarrowWidth(window.innerWidth)) {
           if (!landed.panelOpen) return togglePanel(landed)
+        } else if (landed.centerTabs.some(item => item.id === (created ?? activated)?.id)) {
+          // Already on the conversation header — leave the workbench collapsed.
         } else {
           const hostKey = treeOf(landed, landed.activePane ?? '')
           if (hostKey === 'bottomSplits') {
@@ -668,6 +670,13 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     }
     if (created !== undefined) safeCall(() => descriptor.onOpen?.(created!, callbackScope))
     else if (activated !== undefined) safeCall(() => descriptor.onActivate?.(activated!, callbackScope))
+    if (!targetsInactiveSession) {
+      const landed = store.getSnapshot().state
+      const tab = created ?? activated
+      if (landed !== undefined && tab !== undefined && landed.centerTabs.some(item => item.id === tab.id)) {
+        void import('./conversation-views.tsx').then(mod => { mod.focusLatestCenterView(tab.title) })
+      }
+    }
   }
 
   const closeTab = (tabId: string, scope?: SessionScope): void => {
@@ -677,8 +686,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
       // pointless localStorage rewrite (mirrors updateTab's short-circuit).
       if (!tabOpenIn(state, tabId)) return state
       const paneId = findPaneIdOf(state, tabId)
-      const leaf = leafWithTab(state[treeOf(state, paneId)], tabId)
-      closed = leaf?.tabs.find(tab => tab.id === tabId)
+      closed = findTab(state, tabId)
       return closeTabReducer(state, paneId, tabId)
     })
     if (closed !== undefined) {
@@ -713,8 +721,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
       // Unknown tab ids are a strict no-op (no state churn / notify).
       if (!tabOpenIn(state, tabId)) return state
       const paneId = findPaneIdOf(state, tabId)
-      const leaf = leafWithTab(state[treeOf(state, paneId)], tabId)
-      activated = leaf?.tabs.find(tab => tab.id === tabId)
+      activated = findTab(state, tabId)
       return activateTabReducer(state, paneId, tabId)
     })
     if (activated !== undefined) {
@@ -763,7 +770,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
  * reducer's job — not re-implemented here).
  * `single: true` resolves to the id-key sugar when no explicit key is given.
  */
-function applyDedupe(state: SidebarState, tab: SidebarTab, descriptor: TabDescriptor): SidebarState {
+function applyDedupe(state: SidebarState, tab: SidebarTab, descriptor: TabDescriptor, prefs: SidebarPrefs): SidebarState {
   const dedupeKey = descriptor.dedupeKey ?? (descriptor.single === true ? () => descriptor.id : undefined)
   const key = dedupeKey?.(tab)
   if (key !== undefined) {
@@ -773,12 +780,21 @@ function applyDedupe(state: SidebarState, tab: SidebarTab, descriptor: TabDescri
       const existing = leaf.tabs.find(t => t.type === tab.type && dedupeKey!(t) === key)
       if (existing !== undefined) return activateTabReducer(state, leaf.id, existing.id)
     }
+    const existing = state.centerTabs.find(t => t.type === tab.type && dedupeKey!(t) === key)
+    if (existing !== undefined) return activateTabReducer(state, CENTER_PANE_ID, existing.id)
+  }
+  // Sticky conversation-header landing: once any tab lives on 对话 / 轨迹,
+  // subsequent file opens (editor / diff) join that strip instead of the
+  // right sidebar — Explorer / chat intercept / openFile all go through here.
+  if (state.centerTabs.length > 0 && (tab.type === 'editor' || tab.type === 'diff')) {
+    return dockTabToCenter(state, 'seed', tab.id, tab, prefs.centerTabOverflow, prefs.centerTabMax)
   }
   return openTabInActivePane(state, tab)
 }
 
-/** Find which pane hosts a tab id ('' if none). Either tree is searched. */
+/** Find which pane hosts a tab id ('' if none). Either tree or the center strip. */
 function findPaneIdOf(state: SidebarState, tabId: string): string {
+  if (state.centerTabs.some(t => t.id === tabId)) return CENTER_PANE_ID
   for (const leaf of allLeaves(state.splits).concat(allLeaves(state.bottomSplits))) {
     if (leaf.tabs.some(t => t.id === tabId)) return leaf.id
   }

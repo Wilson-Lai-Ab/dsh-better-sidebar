@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { Context } from '../context-types.ts'
 import type { SessionScope } from './api.ts'
 import { api } from './api.ts'
 import type { SidebarDiffRef } from './state.ts'
@@ -22,8 +23,8 @@ interface DiffData {
   untracked?: string
 }
 
-export function DiffTab(props: { sessionId: string; cwd: string | undefined; diff: SidebarDiffRef }) {
-  const { sessionId, cwd, diff } = props
+export function DiffTab(props: { sessionId: string; cwd: string | undefined; diff: SidebarDiffRef; ctx?: Context }) {
+  const { sessionId, cwd, diff, ctx } = props
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<DiffData | null>(null)
@@ -33,7 +34,7 @@ export function DiffTab(props: { sessionId: string; cwd: string | undefined; dif
 
   useEffect(() => {
     let cancelled = false
-    const scope: SessionScope = { sessionId, cwd }
+    const scope: SessionScope = { sessionId, cwd, repo: diff.repo }
     setLoading(true)
     setError(null)
     setData(null)
@@ -41,7 +42,11 @@ export function DiffTab(props: { sessionId: string; cwd: string | undefined; dif
       try {
         if (diff.kind === 'commit') {
           const result = await api.gitCommitDiff(scope, diff.hashFull)
-          if (!cancelled) setData({ diff: result.diff })
+          const path = diff.path
+          const text = path === undefined
+            ? result.diff
+            : (result.diff.split(/(?=^diff --git )/m).find(chunk => chunk.includes(`b/${path}`) || chunk.includes(`a/${path}`)) ?? result.diff)
+          if (!cancelled) setData({ diff: text })
           return
         }
         let result = await api.gitDiff(scope, diff.path, diff.staged)
@@ -90,7 +95,7 @@ export function DiffTab(props: { sessionId: string; cwd: string | undefined; dif
           title={t('refresh')}
           onClick={refresh}
         >
-          <IconRefreshOutline16 />
+          <IconRefreshOutline16 size={14} />
         </button>
       </div>
       {loading && <div className={css.gitPlaceholder}>{t('loading')}</div>}
@@ -98,8 +103,8 @@ export function DiffTab(props: { sessionId: string; cwd: string | undefined; dif
       {!loading && error === null && data !== null && (
         <>
           {data.untracked !== undefined
-            ? <DiffView diff="" untrackedPath={diff.kind === 'worktree' ? diff.path : ''} untrackedContent={data.untracked} />
-            : <DiffView diff={data.diff} />}
+            ? <DiffView ctx={ctx} sessionId={sessionId} cwd={cwd} diff="" untrackedPath={diff.kind === 'worktree' ? diff.path : ''} untrackedContent={data.untracked} />
+            : <DiffView ctx={ctx} sessionId={sessionId} cwd={cwd} diff={data.diff} />}
           {data.diff === '' && data.untracked === undefined && (
             <div className={css.gitEmpty}>{t('diffEmpty')}</div>
           )}

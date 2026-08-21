@@ -126,6 +126,23 @@ export interface SidebarPrefs {
    */
   browserInterceptHttps: boolean
   /**
+   * Conversation-header file tabs (next to 对话 / 轨迹): `'scroll'` keeps
+   * one row that slides sideways (same as the right workbench); `'wrap'`
+   * wraps like IDEA's editor tabs.
+   */
+  centerTabOverflow: 'scroll' | 'wrap'
+  /**
+   * Wrap-mode cap: opening one more conversation-header tab closes the
+   * oldest. Ignored while `centerTabOverflow` is `'scroll'`.
+   */
+  centerTabMax: number
+  /**
+   * Page size for Review's All / Reviewed turn groups in the current
+   * conversation. Scrolling loads older turns and earlier file writes.
+   * Pending is never capped. Other conversations are not listed.
+   */
+  reviewDoneSessionLimit: number
+  /**
    * Per-tab enable switches, keyed by tab descriptor id (`'explorer'`,
    * `'my-plugin:db'`). An ABSENT key means enabled — only an explicit
    * `false` disables a tab type (hidden from the + menu, `openTab` refuses,
@@ -168,6 +185,16 @@ export const TITLE_BAR_STRIP_MIN = 0
 export const TITLE_BAR_STRIP_MAX = 120
 export const TITLE_BAR_STRIP_DEFAULT = 40
 
+/** Range contract of {@link SidebarPrefs.centerTabMax}. */
+export const CENTER_TAB_MAX_MIN = 1
+export const CENTER_TAB_MAX_MAX = 100
+export const CENTER_TAB_MAX_DEFAULT = 20
+
+/** Range contract of {@link SidebarPrefs.reviewDoneSessionLimit}. */
+export const REVIEW_DONE_SESSIONS_MIN = 1
+export const REVIEW_DONE_SESSIONS_MAX = 50
+export const REVIEW_DONE_SESSIONS_DEFAULT = 30
+
 /** Fallback prefs used whenever the settings document is unreachable or malformed. */
 export const SIDEBAR_PREFS_DEFAULTS: SidebarPrefs = {
   openByDefault: true,
@@ -187,6 +214,9 @@ export const SIDEBAR_PREFS_DEFAULTS: SidebarPrefs = {
   browserInterceptLinks: true,
   browserInterceptHttp: true,
   browserInterceptHttps: false,
+  centerTabOverflow: 'scroll',
+  centerTabMax: CENTER_TAB_MAX_DEFAULT,
+  reviewDoneSessionLimit: REVIEW_DONE_SESSIONS_DEFAULT,
   tabsEnabled: {},
   viewersEnabled: {},
   pluginSettings: {},
@@ -205,4 +235,15 @@ export function clampTerminalFontSize(value: number): number {
 /** Clamp one title-bar strip height into the contract range (shared by schema and client reads). */
 export function clampTitleBarStrip(value: number): number {
   return Math.min(TITLE_BAR_STRIP_MAX, Math.max(TITLE_BAR_STRIP_MIN, Math.round(value)))
+}
+
+/** Clamp the conversation-header tab cap into the contract range. */
+export function clampCenterTabMax(value: number): number {
+  return Math.min(CENTER_TAB_MAX_MAX, Math.max(CENTER_TAB_MAX_MIN, Math.round(value)))
+}
+
+/** Clamp the Review tab's turn-group page size. */
+export function clampReviewDoneSessions(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : REVIEW_DONE_SESSIONS_DEFAULT
+  return Math.min(REVIEW_DONE_SESSIONS_MAX, Math.max(REVIEW_DONE_SESSIONS_MIN, n))
 }

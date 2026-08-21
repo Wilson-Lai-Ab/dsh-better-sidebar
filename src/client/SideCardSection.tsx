@@ -51,7 +51,13 @@ import clsx from 'clsx'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
+  clampCenterTabMax,
+  clampReviewDoneSessions,
   clampWidthPercent,
+  CENTER_TAB_MAX_MAX,
+  CENTER_TAB_MAX_MIN,
+  REVIEW_DONE_SESSIONS_MAX,
+  REVIEW_DONE_SESSIONS_MIN,
   TITLE_BAR_STRIP_MAX,
   TITLE_BAR_STRIP_MIN,
   WIDTH_PERCENT_MAX,
@@ -379,6 +385,8 @@ export function SettingsBody(props: {
 export function SideCardSection({ store, service }: SideCardSectionProps) {
   const [prefs, setPrefs] = useState<SidebarPrefs>(() => store.getPrefs())
   const [widthDraft, setWidthDraft] = useState<string>(String(store.getPrefs().defaultWidthPercent))
+  const [centerMaxDraft, setCenterMaxDraft] = useState<string>(String(store.getPrefs().centerTabMax))
+  const [reviewSessionsDraft, setReviewSessionsDraft] = useState<string>(String(store.getPrefs().reviewDoneSessionLimit))
   const [error, setError] = useState<string | null>(null)
   // Which feature's secondary settings popup is open (null = closed).
   const [settingsFor, setSettingsFor] = useState<TabDescriptor | FileViewerDescriptor | null>(null)
@@ -429,6 +437,8 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
       const next = parsePrefs(view.value)
       setPrefs(next)
       setWidthDraft(String(next.defaultWidthPercent))
+      setCenterMaxDraft(String(next.centerTabMax))
+      setReviewSessionsDraft(String(next.reviewDoneSessionLimit))
     }).catch(() => { /* the store's defaults stay authoritative */ })
     return () => { cancelled = true }
   }, [])
@@ -462,6 +472,8 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
     const settled = outcome.ok ? outcome.prefs : previous
     setPrefs(settled)
     setWidthDraft(String(settled.defaultWidthPercent))
+    setCenterMaxDraft(String(settled.centerTabMax))
+    setReviewSessionsDraft(String(settled.reviewDoneSessionLimit))
   }
 
   /** Optimistically apply one pref patch, then commit (revert on failure). */
@@ -554,6 +566,35 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
     setWidthDraft(String(clamped))
     setError(null)
     void commit({ defaultWidthPercent: clamped }).then(outcome => applyOutcome(previous, outcome))
+  }
+
+  const commitCenterMax = (): void => {
+    const parsed = Number(centerMaxDraft)
+    if (!Number.isFinite(parsed)) {
+      setCenterMaxDraft(String(prefs.centerTabMax))
+      return
+    }
+    const clamped = clampCenterTabMax(parsed)
+    const previous = prefs
+    setPrefs({ ...previous, centerTabMax: clamped })
+    setCenterMaxDraft(String(clamped))
+    setError(null)
+    void commit({ centerTabMax: clamped }).then(outcome => applyOutcome(previous, outcome))
+  }
+
+  const commitReviewSessions = (): void => {
+    const parsed = Number(reviewSessionsDraft)
+    if (!Number.isFinite(parsed)) {
+      setReviewSessionsDraft(String(prefs.reviewDoneSessionLimit))
+      return
+    }
+    const clamped = clampReviewDoneSessions(parsed)
+    const previous = prefs
+    setPrefs({ ...previous, reviewDoneSessionLimit: clamped })
+    store.setPrefs({ ...previous, reviewDoneSessionLimit: clamped })
+    setReviewSessionsDraft(String(clamped))
+    setError(null)
+    void commit({ reviewDoneSessionLimit: clamped }).then(outcome => applyOutcome(previous, outcome))
   }
 
   /**
@@ -691,6 +732,63 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
               label={t('settingsTitleBarTitle')}
               checked={prefs.titleBarCompat}
               onChange={(next) => { applyPref({ titleBarCompat: next }) }}
+            />
+          </span>
+        </div>
+        <div className={css.row}>
+          <span className={css.rowText}>
+            <span className={css.title}>{t('settingsCenterTabsTitle')}</span>
+            <span className={css.desc}>{t('settingsCenterTabsDesc')}</span>
+          </span>
+          <Switch
+            label={t('settingsCenterTabsWrap')}
+            checked={prefs.centerTabOverflow === 'wrap'}
+            onChange={(next) => { applyPref({ centerTabOverflow: next ? 'wrap' : 'scroll' }) }}
+          />
+        </div>
+        {prefs.centerTabOverflow === 'wrap' && (
+          <div className={css.row}>
+            <span className={css.rowText}>
+              <span className={css.title}>{t('settingsCenterTabMaxTitle')}</span>
+              <span className={css.desc}>{t('settingsCenterTabMaxDesc')}</span>
+            </span>
+            <span className={css.control}>
+              <Input
+                type="number"
+                className={css.percentInput}
+                value={centerMaxDraft}
+                min={CENTER_TAB_MAX_MIN}
+                max={CENTER_TAB_MAX_MAX}
+                step={1}
+                aria-label={t('settingsCenterTabMaxTitle')}
+                onChange={(event) => { setCenterMaxDraft(event.currentTarget.value) }}
+                onBlur={commitCenterMax}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur()
+                }}
+              />
+            </span>
+          </div>
+        )}
+        <div className={css.row}>
+          <span className={css.rowText}>
+            <span className={css.title}>{t('reviewDoneSessionsTitle')}</span>
+            <span className={css.desc}>{t('reviewDoneSessionsDesc')}</span>
+          </span>
+          <span className={css.control}>
+            <Input
+              type="number"
+              className={css.percentInput}
+              value={reviewSessionsDraft}
+              min={REVIEW_DONE_SESSIONS_MIN}
+              max={REVIEW_DONE_SESSIONS_MAX}
+              step={1}
+              aria-label={t('reviewDoneSessionsTitle')}
+              onChange={(event) => { setReviewSessionsDraft(event.currentTarget.value) }}
+              onBlur={commitReviewSessions}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              }}
             />
           </span>
         </div>

@@ -7,6 +7,7 @@
  * request). Failures surface as {@link SidebarApiError} with the wire code.
  */
 import { encodeHtmlUrl } from '../html-route.ts'
+import type { ReviewDocument } from '../review/review-document.ts'
 import type { BrowserProbeResult } from './browser.ts'
 
 /** One wire failure. */
@@ -27,16 +28,32 @@ export interface FsEntry {
   hidden: boolean
 }
 
+/** One Quick-Open hit from `fs.find`. */
+export interface FsFindHit {
+  path: string
+  rel: string
+  score: number
+  indices: number[]
+}
+
 /** Git status entry (host git shape). */
 export interface GitStatusEntry {
   path: string
   xy: string
 }
 
+/** One git work tree under the session workspace. */
+export interface GitRepoInfo {
+  root: string
+  name: string
+  rel: string
+}
+
 /** Git status snapshot. */
 export interface GitStatusResult {
   isRepo: boolean
   branch?: string
+  root?: string
   entries: GitStatusEntry[]
 }
 
@@ -103,11 +120,18 @@ export interface SessionScope {
   sessionId: string
   /** The session's working directory from the client list summary (optional). */
   cwd?: string
+  /** Absolute git work-tree root when the Git panel has a selected repo. */
+  repo?: string
 }
 
 /** Fold a scope into a JSON payload ({cwd} only when present). */
 function scopePayload(scope: SessionScope, extra: Record<string, unknown>): Record<string, unknown> {
-  return { sessionId: scope.sessionId, ...(scope.cwd !== undefined && scope.cwd !== '' ? { cwd: scope.cwd } : {}), ...extra }
+  return {
+    sessionId: scope.sessionId,
+    ...(scope.cwd !== undefined && scope.cwd !== '' ? { cwd: scope.cwd } : {}),
+    ...(scope.repo !== undefined && scope.repo !== '' ? { repo: scope.repo } : {}),
+    ...extra,
+  }
 }
 
 /** The sidebar API surface (session scope threaded through every call). */
@@ -116,10 +140,18 @@ export const api = {
     call<{ sessionId: string; cwd: string; root: string; parent: string | null }>('session.cwd', scopePayload(scope, {}), signal),
   fsTree: (scope: SessionScope, path: string, signal?: AbortSignal) =>
     call<{ path: string; entries: FsEntry[]; truncated: boolean }>('fs.tree', scopePayload(scope, { path }), signal),
+  fsFind: (scope: SessionScope, query: string, signal?: AbortSignal) =>
+    call<{ hits: FsFindHit[] }>('fs.find', scopePayload(scope, { query }), signal),
   fsRead: (scope: SessionScope, path: string, signal?: AbortSignal) =>
     call<FsTextResult | FsBinaryResult>('fs.read', scopePayload(scope, { path }), signal),
   fsWrite: (scope: SessionScope, path: string, content: string) =>
     call<{ ok: true }>('fs.write', scopePayload(scope, { path, content })),
+  fsUnlink: (scope: SessionScope, path: string) =>
+    call<{ ok: true }>('fs.unlink', scopePayload(scope, { path })),
+  gitShow: (scope: SessionScope, path: string, rev: string, signal?: AbortSignal) =>
+    call<{ content: string | null }>('git.show', scopePayload(scope, { path, rev }), signal),
+  gitRepos: (scope: SessionScope, signal?: AbortSignal) =>
+    call<{ repos: GitRepoInfo[] }>('git.repos', scopePayload(scope, {}), signal),
   gitStatus: (scope: SessionScope, signal?: AbortSignal) =>
     call<GitStatusResult>('git.status', scopePayload(scope, {}), signal),
   gitDiff: (scope: SessionScope, path: string | undefined, staged: boolean, signal?: AbortSignal) =>
@@ -128,6 +160,12 @@ export const api = {
     call<{ ok: true }>('git.stage', scopePayload(scope, { ...(path !== undefined ? { path } : {}) })),
   gitUnstage: (scope: SessionScope, path?: string) =>
     call<{ ok: true }>('git.unstage', scopePayload(scope, { ...(path !== undefined ? { path } : {}) })),
+  /** Stage tracked modifications/deletions only (untracked files stay put). */
+  gitStageTracked: (scope: SessionScope) =>
+    call<{ ok: true }>('git.stage-tracked', scopePayload(scope, {})),
+  /** Stage the given untracked paths in one batch. */
+  gitStageUntracked: (scope: SessionScope, paths: string[]) =>
+    call<{ ok: true }>('git.stage-untracked', scopePayload(scope, { paths })),
   gitCommit: (scope: SessionScope, message: string) =>
     call<{ ok: true }>('git.commit', scopePayload(scope, { message })),
   gitBranch: (scope: SessionScope, signal?: AbortSignal) =>
@@ -173,6 +211,12 @@ export const api = {
       id,
       ...(reason !== undefined ? { reason } : {}),
     })),
+  /** Read this conversation's Keep / Undo ledger from the session directory. */
+  reviewGet: (scope: SessionScope, signal?: AbortSignal) =>
+    call<ReviewDocument>('review.get', scopePayload(scope, {}), signal),
+  /** Replace this conversation's Keep / Undo ledger on disk. */
+  reviewPut: (scope: SessionScope, document: ReviewDocument) =>
+    call<ReviewDocument>('review.put', scopePayload(scope, { document })),
   /** Read the side card preferences (plugin-global, no session scope). */
   settingsGet: () =>
     call<{ value?: unknown; revision?: number }>('settings.get', {}),

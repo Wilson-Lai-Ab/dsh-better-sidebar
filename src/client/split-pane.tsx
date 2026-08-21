@@ -27,6 +27,8 @@ export interface WorkbenchActions {
   moveTabToEdge: (payload: TabDragPayload, toPane: string, zone: DropZone) => void
   /** Reorder within a pane (drop onto another tab inserts before it). */
   moveTabBefore: (payload: TabDragPayload, toPane: string, beforeTabId: string) => void
+  /** Double-click a workbench tab onto the conversation header. */
+  dockTabToCenter: (paneId: string, tabId: string) => void
   resizeSplit: (splitId: string, index: number, deltaFrac: number) => void
 }
 
@@ -124,8 +126,9 @@ function LeafView(props: {
   renderTab: (tab: SidebarTab, active: boolean, paneId: string) => ReactNode
   getTabIcon?: (tab: SidebarTab) => ReactNode
   getTabBadge?: (tab: SidebarTab) => ReactNode
+  getTabTitleClass?: (tab: SidebarTab) => string | undefined
 }) {
-  const { leaf, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge } = props
+  const { leaf, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass } = props
   const [dropZone, setDropZone] = useState<DropZone | null>(null)
   const activeTab = leaf.tabs.find(tab => tab.id === leaf.active) ?? leaf.tabs[leaf.tabs.length - 1]
 
@@ -180,10 +183,12 @@ function LeafView(props: {
         newTabOptions={newTabOptions}
         getTabIcon={getTabIcon}
         getTabBadge={getTabBadge}
+        getTabTitleClass={getTabTitleClass}
         onDropTab={(payload, before) => {
           if (before === null) actions.moveTabToEdge(payload, leaf.id, 'center')
           else actions.moveTabBefore(payload, leaf.id, before)
         }}
+        onDockToCenter={(tabId) => { actions.dockTabToCenter(leaf.id, tabId) }}
       />
       {leaf.tabs.length > 0 ? (
         /*
@@ -220,8 +225,9 @@ function NodeView(props: {
   renderTab: (tab: SidebarTab, active: boolean, paneId: string) => ReactNode
   getTabIcon?: (tab: SidebarTab) => ReactNode
   getTabBadge?: (tab: SidebarTab) => ReactNode
+  getTabTitleClass?: (tab: SidebarTab) => string | undefined
 }) {
-  const { node, state, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge } = props
+  const { node, state, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass } = props
   if (node.kind === 'leaf') {
     return (
       <LeafView
@@ -232,6 +238,7 @@ function NodeView(props: {
         renderTab={renderTab}
         getTabIcon={getTabIcon}
         getTabBadge={getTabBadge}
+        getTabTitleClass={getTabTitleClass}
       />
     )
   }
@@ -259,6 +266,7 @@ function NodeView(props: {
               renderTab={renderTab}
               getTabIcon={getTabIcon}
               getTabBadge={getTabBadge}
+              getTabTitleClass={getTabTitleClass}
             />
           </div>
         </Fragment>
@@ -280,8 +288,9 @@ export function Workbench(props: {
   renderTab: (tab: SidebarTab, active: boolean, paneId: string) => ReactNode
   getTabIcon?: (tab: SidebarTab) => ReactNode
   getTabBadge?: (tab: SidebarTab) => ReactNode
+  getTabTitleClass?: (tab: SidebarTab) => string | undefined
 }) {
-  const { state, tree, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge } = props
+  const { state, tree, newTabOptions, actions, onNewTab, renderTab, getTabIcon, getTabBadge, getTabTitleClass } = props
   return (
     <div className={css.workbench}>
       <NodeView
@@ -293,6 +302,7 @@ export function Workbench(props: {
         renderTab={renderTab}
         getTabIcon={getTabIcon}
         getTabBadge={getTabBadge}
+        getTabTitleClass={getTabTitleClass}
       />
     </div>
   )

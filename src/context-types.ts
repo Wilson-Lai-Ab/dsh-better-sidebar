@@ -141,6 +141,8 @@ export interface SidebarSessionSummary {
   parentId?: string
   /** Whether the session's agent is currently running. */
   running?: boolean
+  /** Epoch ms of the last durable update (host session list). */
+  updatedAt?: number
 }
 
 /** One healthy subagent catalog child row (structural mirror of the runtime). */
@@ -269,6 +271,17 @@ export interface SidebarSessionsService {
     subscribe(fn: () => void): () => void
   }
   /**
+   * Per-session conversation face (nodes + subscribe). Optional on older
+   * runtimes — the review tab then shows an empty list.
+   */
+  binding?(id: string): {
+    session: {
+      getSnapshot(): { nodes?: readonly unknown[]; hasMore?: boolean; loadingOlder?: boolean }
+      subscribe(fn: () => void): () => void
+      loadOlder?(): Promise<void>
+    }
+  } | undefined
+  /**
    * Select a listed session as current (mirror of the runtime ISessions.open)
    * — used to jump back to the main agent from the topology root node.
    */
@@ -317,12 +330,33 @@ export interface SidebarLocaleService {
 
 /** The composer draft face the sidebar reaches through `ctx.conversation.input`. */
 export interface SidebarSessionInput {
-  /** The live input store (draft read for append). */
+  /** The live input store (draft read for append + chip CAS). */
   state: {
-    getSnapshot(): { draft: string }
+    getSnapshot(): {
+      draft: string
+      draftRev?: number
+      occurrences?: readonly {
+        occurrenceId: number
+        source: string
+        ref: string
+        offset: number
+        label: string
+        clipboardText?: string
+      }[]
+    }
   }
   /** Replace the draft text (the input machine's single public write path). */
   setDraft(text: string): void
+  /**
+   * Mint a reference chip (U+FFFC + occurrence). Optional: older DSH
+   * facades only expose setDraft — callers fall back to plain text.
+   */
+  insertReference?(ref: {
+    source: string
+    ref: string
+    label: string
+    clipboardText: string
+  }, span: { start: number; end: number; draftRev: number }): boolean
 }
 
 /** The composer draft face the sidebar reaches through `ctx.get('conversation')`. */

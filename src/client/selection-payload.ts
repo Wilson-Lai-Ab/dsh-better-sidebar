@@ -4,11 +4,9 @@
  * here is string math — no React, no ctx — so the unit tests cover it
  * directly.
  *
- * Insert shape (agreed with the product owner):
- * - Selection ≤ SELECTION_LIMIT characters: a fenced code block whose info
- *   line is `相对路径:起止行` and whose body is the selected text.
- * - Selection over the limit: a single plain-text line `相对路径:起止行`
- *   (no fence, no content).
+ * Path/line header helpers for file chips. The composer shows a Cursor-style
+ * chip (`File.java (108-121)`); on send the codec expands a short selection
+ * to a fenced `相对路径:起止行` block and drops the body past SELECTION_LIMIT.
  * - The path is relative to the session cwd (the same projection the
  *   explorer's @ button uses); an unknown cwd falls back to the absolute
  *   path.
