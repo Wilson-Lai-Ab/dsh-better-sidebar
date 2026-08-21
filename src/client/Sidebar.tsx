@@ -13,8 +13,9 @@
  * conversations swaps the sidebar.
  *
  * The shell binds the workbench actions to the store and dispatches tab
- * content to the views. New tabs come from the + menu (explorer / git / review /
- * terminal; editors open from the explorer). Tabs can be dragged between
+ * content to the views. New tool views open from the activity bar
+ * (explorer / git / review / terminal; editors open from the explorer).
+ * Tabs can be dragged between
  * the right and bottom workbenches, dropped on the conversation header
  * (对话 / 轨迹) to become a center view, or dropped on the chat body
  * to dock into the bottom panel.
@@ -59,7 +60,7 @@ import css from './sidebar.module.css'
  * (mirror of the terminal view's own cap; the loop restarts on session switch). */
 const FAILURE_LIMIT = 3
 
-/** The + menu options for the current state, driven by the tab registry.
+/** The activity-bar options for the current state, driven by the tab registry.
  * Hidden tabs (editor/diff) never show; `available` returning false shows
  * a disabled row (e.g. terminal at capacity) instead of hiding the option.
  * Tabs the user disabled in the side card settings are filtered out
@@ -1011,7 +1012,7 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
         />
         {/*
           The bottom panel's own close control at its tab strip's right end
-          (the strip reserves the width via CSS so the + menu never hides
+          (the strip reserves the width via CSS so the activity bar never hides
           under it): one tap collapses the panel.
         */}
         <Tooltip label={t('collapseBottomPanel')} side="bottom" delayMs={500}>
