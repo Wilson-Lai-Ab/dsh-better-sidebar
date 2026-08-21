@@ -29,7 +29,6 @@ import {
 import { isNarrowWidth } from './breakpoints.ts'
 import type { SessionScope } from './api.ts'
 import type { SidebarPrefs } from '../prefs-shared.ts'
-import { requestReveal } from './editor-reveal.ts'
 
 /**
  * Public state vocabulary re-exported for consumers (type-only; the values
@@ -352,7 +351,7 @@ export interface BetterSidebarService {
   /**
    * Monotonic capability list (v0.12.0+): 'badge' | 'tabLifecycle' |
    * 'updateTab' | 'openFile' | 'targetedOpen' | 'stateSubscription' |
-   * 'tabMeta' | 'pluginSettings' | 'fileReveal'. Features are never removed — consumers
+   * 'tabMeta' | 'pluginSettings'. Features are never removed — consumers
    * gate new API usage on membership.
    */
   readonly features: readonly string[]
@@ -372,19 +371,8 @@ export interface BetterSidebarService {
    * (v0.12.0+) rides to the callback like `closeTab`'s.
    */
   activateTab(tabId: string, scope?: SessionScope): void
-  /**
-   * Open a file in the sidebar editor of `scope`'s session (title defaults to the file name).
-   * Optional `reveal` (v0.12.3+, `features` includes `'fileReveal'`) scrolls the
-   * editor to that 1-based line span once the view is ready.
-   */
-  openFile(scope: SessionScope, path: string, title?: string, reveal?: FileReveal): void
-}
-
-/** Optional 1-based line span passed to `openFile` (`features` includes `'fileReveal'`). */
-export interface FileReveal {
-  line: number
-  endLine?: number
-  snippet?: string
+  /** Open a file in the sidebar editor of `scope`'s session (title defaults to the file name). */
+  openFile(scope: SessionScope, path: string, title?: string): void
 }
 
 /** Extract the lowercase extension without leading dot from a path. */
@@ -432,7 +420,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.12.3'
+export const SIDEBAR_SERVICE_VERSION = '0.12.2'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -446,7 +434,6 @@ export const SIDEBAR_SERVICE_VERSION = '0.12.3'
  * - 'tabMeta': SidebarTab.meta (seeds, createTab, updateTab, persistence)
  * - 'pluginSettings': SidebarSettingsDeclaration.pluginToggles/render
  * - 'urlTarget' (v0.13.0): TabDescriptor.urlTarget (external-link claims)
- * - 'fileReveal': BetterSidebarService.openFile fourth-arg line reveal
  */
 export const SIDEBAR_FEATURES = [
   'badge',
@@ -458,7 +445,6 @@ export const SIDEBAR_FEATURES = [
   'tabMeta',
   'pluginSettings',
   'urlTarget',
-  'fileReveal',
 ] as const
 
 /** Run one plugin callback; a throw is logged and never breaks the caller. */
@@ -744,19 +730,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
   /** Open a file in the sidebar editor of `scope`'s session (title defaults
    *  to the file name; the tab id is path-derived, like the internal
    *  open-path interception, so distinct files open side by side). */
-  const openFile = (
-    scope: SessionScope,
-    path: string,
-    title?: string,
-    reveal?: FileReveal,
-  ): void => {
-    if (reveal !== undefined && Number.isFinite(reveal.line) && reveal.line >= 1) {
-      requestReveal(path, {
-        start: reveal.line,
-        end: reveal.endLine !== undefined && reveal.endLine >= reveal.line ? reveal.endLine : reveal.line,
-        ...(reveal.snippet !== undefined && reveal.snippet !== '' ? { selected: reveal.snippet } : {}),
-      })
-    }
+  const openFile = (scope: SessionScope, path: string, title?: string): void => {
     openTab({ type: 'editor', title: title ?? baseNameOf(path), path, id: `editor:${path}` }, scope)
   }
 

@@ -55,13 +55,13 @@
 **macOS / Linux**（Windows 装了 Git Bash 或 WSL 也可）：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash
 ```
 
 **Windows（PowerShell 5.1+ / pwsh）**：
 
 ```powershell
-irm https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1 | iex
 ```
 
 装完**硬刷新浏览器**（Cmd/Ctrl+Shift+R）即可看到侧边栏（DSH 对 client 改动热加载，无需重启；仅 host 半更新时需要重启）。
@@ -71,10 +71,10 @@ irm https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scri
 
 ```sh
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
+curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
 
 # Windows PowerShell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
 ```
 
 不确定的话，可先加 `--dry-run`（PowerShell 用 `-DryRun`）预览步骤再执行。
@@ -166,7 +166,7 @@ dsh plugin --profile web add dsh-better-sidebar
 调试本地改动或跟随开发分支时，把依赖指向本地克隆并自行构建：
 
 ```text
-1. git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git ~/Code/DSH-better-sidebar
+1. git clone https://github.com/omdsh-dev/DSH-better-sidebar.git ~/Code/DSH-better-sidebar
    cd ~/Code/DSH-better-sidebar && pnpm install && pnpm build
 2. ~/.dsh/profiles/web/package.json 的 dependencies 写 "dsh-better-sidebar": "link:<克隆目录绝对路径>"
 3. ~/.dsh/profiles/web/cordis.patch.yml 追加挂载行：
@@ -187,7 +187,7 @@ dsh plugin --profile web add dsh-better-sidebar
 前置：DSH 已集成 [plugin-registry](https://github.com/dsh-external/plugin-registry)（`dsh registry` 可用）。**同时启用两个通道会双挂载**（Node 半挂两次、页面两个侧边栏）。
 
 ```sh
-git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git && cd DSH-better-sidebar
+git clone https://github.com/omdsh-dev/DSH-better-sidebar.git && cd DSH-better-sidebar
 pnpm install && pnpm build
 node scripts/package-registry.mjs   # 组装 registry/ 暂存（含清单 + 产物 + README，不入库）
 dsh registry install ./registry     # 安装（默认禁用）

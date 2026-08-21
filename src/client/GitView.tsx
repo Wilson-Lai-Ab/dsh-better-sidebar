@@ -297,7 +297,7 @@ export function GitView(props: {
           title={t('refresh')}
           onClick={() => { void refresh() }}
         >
-          <IconRefreshOutline16 size={14} />
+          <IconRefreshOutline16 />
         </button>
       </div>
 

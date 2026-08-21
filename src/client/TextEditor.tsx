@@ -22,7 +22,6 @@ import { cmSurfaceTheme, CmThemeCompartment } from './cm-themes.ts'
 import { isDarkScheme, subscribeColorScheme } from './theme.ts'
 import { SandboxStatusBar } from './SandboxStatusBar.tsx'
 import { appendToDraft } from './conversation-draft.ts'
-import { subscribeReveal, takeReveal } from './editor-reveal.ts'
 import { buildSelectionInsert, linesOfSelection } from './selection-payload.ts'
 import { t } from './locales.ts'
 import type { FileViewerProps } from './service.ts'
@@ -94,36 +93,6 @@ export function TextEditor(props: FileViewerProps) {
 
   useEffect(() => subscribeColorScheme(() => { setDark(isDarkScheme()) }), [])
 
-  // Search / openFile(reveal) stash a one-shot range; consume it when this
-  // path's view exists (new tab or already open). Switch preview → edit so
-  // the caret is visible.
-  useEffect(() => {
-    const apply = (): void => {
-      const range = takeReveal(path)
-      if (range === undefined) return
-      setMode('edit')
-      const go = (): void => {
-        const view = viewRef.current
-        if (view === null) {
-          window.requestAnimationFrame(go)
-          return
-        }
-        const startLine = Math.min(Math.max(range.start, 1), view.state.doc.lines)
-        const endLine = Math.min(Math.max(range.end, startLine), view.state.doc.lines)
-        const from = view.state.doc.line(startLine).from
-        const to = view.state.doc.line(endLine).to
-        view.dispatch({
-          selection: { anchor: from, head: to },
-          effects: CodeMirrorView.scrollIntoView(from, { y: 'center' }),
-        })
-        view.focus()
-      }
-      go()
-    }
-    apply()
-    return subscribeReveal(apply)
-  }, [path, content])
-
   // A new file (tab switch) starts clean: fresh preview mode, no draft.
   useEffect(() => {
     setMode('preview')
@@ -172,11 +141,11 @@ export function TextEditor(props: FileViewerProps) {
           ...defaultKeymap,
           ...historyKeymap,
         ]),
-        // Selection popup (the code and markdown editors): a non-empty
+        // Selection popup (the catch-all code viewer only): a non-empty
         // selection anchors the floating "add to conversation" button above
         // its head. Scrolling (geometry/viewport change) or losing focus
         // hides it; typing collapses the selection and hides it too.
-        ...(viewerId === 'code' || viewerId === 'markdown' ? [
+        ...(viewerId === 'code' ? [
           CodeMirrorView.updateListener.of((update) => {
             if (update.geometryChanged || update.viewportChanged) {
               hidePopup()
