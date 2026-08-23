@@ -5,7 +5,8 @@
  * min-height auto), so explorer/editor children collapse. This overlay
  * sits on the conversation column and renders the tab body ourselves.
  */
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import clsx from 'clsx'
 import type { Context } from '../context-types.ts'
 import { TabContent } from './tab-content.tsx'
 import { editorTabForPath } from './intercept.tsx'
@@ -222,6 +223,33 @@ export function useHostHeaderTabSync(ctx: Context, store: SidebarStore): void {
   }, [ctx, store])
 }
 
+/**
+ * True while the host's conversation-header tab strip is mounted (it hosts the
+ * docked-file tabs as `conversation.view` slots next to 对话 / 轨迹). In a
+ * FRESH conversation the host renders no header strip, so there is nowhere for
+ * a docked-file tab to live — the overlay must paint its own strip.
+ */
+function useHostHeaderTablistPresent(): boolean {
+  const [present, setPresent] = useState(() => {
+    const list = document.querySelector('[data-slot="conversation.session.header"] header [role="tablist"]')
+    return list instanceof HTMLElement
+  })
+  useEffect(() => {
+    const check = (): void => {
+      const list = document.querySelector('[data-slot="conversation.session.header"] header [role="tablist"]')
+      setPresent(prev => {
+        const next = list instanceof HTMLElement
+        return prev === next ? prev : next
+      })
+    }
+    const root = document.getElementById('root')
+    const watcher = root === null ? undefined : observeHostHeader(root, check)
+    check()
+    return () => { watcher?.disconnect() }
+  }, [])
+  return present
+}
+
 export function CenterPreview(props: {
   ctx: Context
   store: SidebarStore
@@ -235,6 +263,7 @@ export function CenterPreview(props: {
   onReferenceFile: (path: string) => void
 }): ReactNode {
   const { ctx, store, state, sessionId, cwd, left, right, top, bottom, onReferenceFile } = props
+  const hostHeaderPresent = useHostHeaderTablistPresent()
   const activeId = state.centerActive
   if (activeId === null || state.centerTabs.length === 0) return null
   const tab = state.centerTabs.find(candidate => candidate.id === activeId)
@@ -245,6 +274,48 @@ export function CenterPreview(props: {
       className={css.centerPreview}
       style={{ left, right: window.innerWidth - right, top, bottom }}
     >
+      {/*
+        Fallback tab strip for a FRESH conversation (no host 对话 / 轨迹
+        header yet): mirror the host's strip with a leading 对话 tab to click
+        back to the chat, then one file tab per docked file (switch + close).
+        When the host strip IS mounted we render nothing — the host tabs
+        (decorated by useHostHeaderTabSync) already carry the close button.
+      */}
+      {!hostHeaderPresent && (
+      <div className={css.centerPreviewTabs} role="tablist">
+        <div
+          role="tab"
+          aria-selected={false}
+          className={css.centerPreviewTab}
+          onClick={() => { store.reduce(s => (s.centerActive === null ? s : { ...s, centerActive: null })) }}
+        >
+          <span className={css.centerPreviewLabel}>{t('conversationTab')}</span>
+        </div>
+        {state.centerTabs.map(candidate => (
+          <div
+            key={candidate.id}
+            role="tab"
+            aria-selected={candidate.id === activeId}
+            className={clsx(css.centerPreviewTab, candidate.id === activeId && css.centerPreviewTabActive)}
+            title={candidate.title}
+            onClick={() => { store.reduce(s => (s.centerActive === candidate.id ? s : { ...s, centerActive: candidate.id })) }}
+          >
+            <span className={css.centerPreviewLabel}>{candidate.title}</span>
+            <button
+              type="button"
+              className={css.centerPreviewClose}
+              aria-label={t('close')}
+              onClick={(event) => {
+                event.stopPropagation()
+                ctx.betterSidebar?.closeTab(candidate.id, { sessionId })
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+      )}
       <div className={css.centerPreviewBody}>
         <TabContent
           tab={tab}

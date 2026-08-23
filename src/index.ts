@@ -238,6 +238,10 @@ function buildApi(
       }
       return { ok: true }
     },
+    'git.repos': async (payload) => {
+      const { cwd } = cwdOf(payload)
+      return { repos: await git.listRepos(cwd) }
+    },
     'git.status': async (payload) => {
       const { cwd } = cwdOf(payload)
       return git.status(cwd)

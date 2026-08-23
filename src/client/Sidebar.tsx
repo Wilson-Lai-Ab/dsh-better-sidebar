@@ -41,7 +41,6 @@ import {
   resizeSplitIn, setBottomHeight, setWidth, toggleBottomPanel, toggleExpanded, togglePanel,
   type DropZone, type SidebarState, type SidebarStore, type SidebarTab, type SplitNode,
 } from './state.ts'
-import { IconPanelBottomOutline16, IconPanelRightOutline16 } from './icons.tsx'
 import { Workbench, type WorkbenchActions } from './split-pane.tsx'
 import { useNarrowViewport } from './breakpoints.ts'
 import { parseDrag, TAB_DRAG_TYPE, type NewTabOption, type TabDragPayload } from './TabBar.tsx'
@@ -630,22 +629,10 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
   }, [snapshot.prefs.centerTabOverflow])
 
   if (state === undefined || sessionId === undefined) {
-    return (
-      <div className={css.toggleCluster}>
-        {!narrow && (
-          <Tooltip label={t('noSession')} side="bottom" delayMs={500}>
-            <button type="button" className={css.toggleButton} disabled aria-label={t('noSession')}>
-              <IconPanelBottomOutline16 />
-            </button>
-          </Tooltip>
-        )}
-        <Tooltip label={t('noSession')} side="bottom" delayMs={500}>
-          <button type="button" className={css.toggleButton} disabled aria-label={t('noSession')}>
-            <IconPanelRightOutline16 />
-          </button>
-        </Tooltip>
-      </div>
-    )
+    // No session yet: nothing to render (the old toggle cluster is gone —
+    // the activity bar's active-icon click and the bottom panel's own close
+    // control are the panel affordances now).
+    return null
   }
 
   const onNewTab = (optionId: string): void => {
@@ -653,6 +640,20 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
     const descriptor = service?.getTab(optionId)
     if (descriptor === undefined) return
     const title = typeof descriptor.title === 'function' ? descriptor.title() : descriptor.title
+    // Terminals open in the BOTTOM panel by default (VS Code integrated
+    // terminal convention): pin the active pane to the bottom tree's first
+    // leaf and expand the bottom panel before the open lands. On narrow
+    // viewports the two workbenches merge into one drawer (no bottom panel),
+    // so the open stays in the merged right tree. Multi-instance terminals
+    // still mint fresh `terminal:<n>` ids through the descriptor's createTab.
+    if (optionId === 'terminal' && !narrow) {
+      store.reduce(s => ({
+        ...s,
+        activePane: firstLeaf(s.bottomSplits).id,
+        bottomOpen: true,
+        bottomOpenedOnce: true,
+      }))
+    }
     // The session scope rides along: lifecycle callbacks receive it (and
     // the open stays in the current session, as before).
     service.openTab({ type: optionId, title }, { sessionId, cwd })
@@ -756,14 +757,6 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
 
   return (
     <>
-      {/*
-        The persistent toggle cluster at the top-right corner: the bottom
-        panel's button (bottom glyph) LEFT of the right panel's (side glyph).
-        Always pinned to the viewport corner — inside the right panel's
-        top-right while it is open, sitting flush in the tab strip whose
-        right end it really squeezes (the strip reserves its width via CSS),
-        so the tabs genuinely yield space to it.
-      */}
       {!narrow && (
         <>
           <div
@@ -841,34 +834,6 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
           />
         </>
       )}
-      <div className={css.toggleCluster}>
-        {/*
-          Narrow viewports merge the two workbenches into the one drawer —
-          there is no bottom panel, so its toggle button is not offered.
-        */}
-        {!narrow && (
-          <Tooltip label={state.bottomOpen ? t('collapseBottomPanel') : t('expandBottomPanel')} side="bottom" delayMs={500}>
-            <button
-              type="button"
-              className={css.toggleButton}
-              aria-label={state.bottomOpen ? t('collapseBottomPanel') : t('expandBottomPanel')}
-              onClick={() => { store.reduce(toggleBottomPanel) }}
-            >
-              <IconPanelBottomOutline16 />
-            </button>
-          </Tooltip>
-        )}
-        <Tooltip label={state.panelOpen ? t('collapse') : t('expand')} side="bottom" delayMs={500}>
-          <button
-            type="button"
-            className={css.toggleButton}
-            aria-label={state.panelOpen ? t('collapse') : t('expand')}
-            onClick={() => { store.reduce(togglePanel) }}
-          >
-            <IconPanelRightOutline16 />
-          </button>
-        </Tooltip>
-      </div>
       {/*
         The right panel stays mounted while collapsed (hidden off-screen) so
         the slide in/out can animate; visibility hides it after the slide

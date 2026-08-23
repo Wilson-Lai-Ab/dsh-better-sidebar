@@ -783,10 +783,13 @@ function applyDedupe(state: SidebarState, tab: SidebarTab, descriptor: TabDescri
     const existing = state.centerTabs.find(t => t.type === tab.type && dedupeKey!(t) === key)
     if (existing !== undefined) return activateTabReducer(state, CENTER_PANE_ID, existing.id)
   }
-  // Sticky conversation-header landing: once any tab lives on 对话 / 轨迹,
-  // subsequent file opens (editor / diff) join that strip instead of the
-  // right sidebar — Explorer / chat intercept / openFile all go through here.
-  if (state.centerTabs.length > 0 && (tab.type === 'editor' || tab.type === 'diff')) {
+  // File previews (editor / diff) land on the conversation header by default
+  // (not the right sidebar): Explorer / chat intercept / openFile all go
+  // through here. In a FRESH conversation the host has no 对话 / 轨迹 strip,
+  // so CenterPreview paints its own tab strip (a 对话 tab to click back to
+  // the chat + a close button per file) — the preview stays closable either
+  // way.
+  if (tab.type === 'editor' || tab.type === 'diff') {
     return dockTabToCenter(state, 'seed', tab.id, tab, prefs.centerTabOverflow, prefs.centerTabMax)
   }
   return openTabInActivePane(state, tab)

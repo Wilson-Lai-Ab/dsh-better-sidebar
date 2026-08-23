@@ -103,6 +103,8 @@ export function GitView(props: {
   const [fileMenu, setFileMenu] = useState<{ entry: GitStatusEntry; staged: boolean; x: number; y: number } | null>(null)
   /** The pending destructive action awaiting confirmation. */
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
+  /** The multi-repo picker modal (a workspace with several git roots). */
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false)
 
   /** IDEA-style three-way split: staged (index X), modified (worktree Y on a
    *  tracked file), untracked (`??`). A file with both index and worktree
@@ -322,20 +324,18 @@ export function GitView(props: {
     <div className={css.git}>
       <div className={css.gitHeader}>
         {repos.length > 1 && (
-          <select
+          <button
+            type="button"
             className={css.gitBranchSelect}
             aria-label={t('gitRepo')}
             title={t('gitRepo')}
-            value={repoRoot ?? ''}
-            onChange={(event) => { void refresh(event.target.value) }}
+            onClick={() => { setRepoPickerOpen(true) }}
             disabled={busy}
           >
-            {repos.map(repo => (
-              <option key={repo.root} value={repo.root}>
-                {repo.rel === '.' ? repo.name : `${repo.name} (${repo.rel})`}
-              </option>
-            ))}
-          </select>
+            {repos.find(repo => repo.root === repoRoot)?.rel === '.'
+              ? repos.find(repo => repo.root === repoRoot)?.name
+              : `${repos.find(repo => repo.root === repoRoot)?.name ?? ''} (${repos.find(repo => repo.root === repoRoot)?.rel ?? ''})`}
+          </button>
         )}
         <select
           className={css.gitBranchSelect}
@@ -541,6 +541,35 @@ export function GitView(props: {
             )}
           >
             <p className={css.gitConfirmDesc}>{confirm?.description}</p>
+          </Modal>
+
+          {/* Multi-repo picker: a workspace holding several git roots shows a
+              modal list instead of a cramped inline select. Choosing one
+              refreshes the status/branch for that root. */}
+          <Modal
+            open={repoPickerOpen}
+            onClose={() => { setRepoPickerOpen(false) }}
+            title={t('gitRepo')}
+            closeLabel={t('cancel')}
+          >
+            <div className={css.gitRepoList} role="listbox" aria-label={t('gitRepo')}>
+              {repos.map(repo => (
+                <button
+                  key={repo.root}
+                  type="button"
+                  role="option"
+                  aria-selected={repo.root === repoRoot}
+                  className={css.gitRepoItem}
+                  onClick={() => {
+                    setRepoPickerOpen(false)
+                    void refresh(repo.root)
+                  }}
+                >
+                  <span className={css.gitRepoName}>{repo.name}</span>
+                  {repo.rel !== '.' && <span className={css.gitRepoRel}>{repo.rel}</span>}
+                </button>
+              ))}
+            </div>
           </Modal>
         </>
       )}

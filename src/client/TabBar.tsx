@@ -107,6 +107,12 @@ export function TabBar(props: {
   const listRef = useRef<HTMLDivElement>(null)
   const stripTabs = stripTabFilter === undefined ? tabs : tabs.filter(stripTabFilter)
 
+  // An empty strip renders NO chrome: the activity bar owns the tool views,
+  // so a pane showing only a tool view (explorer / git / terminal …) has an
+  // empty file-preview strip — without this early return it draws a bare
+  // 34px bar across the top (the "white block" the user asked to remove).
+  if (stripTabs.length === 0) return null
+
   // Wheel over the strip scrolls the tab row horizontally (a plain mouse
   // wheel emits deltaY, which overflow-x alone never consumes). Bound as a
   // native NON-passive listener: React registers onWheel passively at the

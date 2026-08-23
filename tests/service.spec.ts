@@ -352,7 +352,7 @@ describe('service.openTab dedupe', () => {
     store.setSession('s1')
     service.openTab({ type: 'editor', title: 'main.ts', path: '/p/main.ts' })
     const state = store.getSnapshot().state!
-    const tab = allLeaves(state.splits).flatMap(l => l.tabs).find(t => t.type === 'editor')
+    const tab = state.centerTabs.find(t => t.type === 'editor')
     expect(tab?.title).toBe('main.ts')
   })
 
@@ -592,7 +592,7 @@ describe('service.openTab auto-expand for content opens', () => {
     }
   })
 
-  it('expands the collapsed right panel for a path (file) open on a wide viewport', () => {
+  it('a file open lands on the conversation header by default (not the right panel)', () => {
     const store = createSidebarStore()
     const service = createBetterSidebarService(store)
     service.registerTab({ id: 'editor', title: 'Editor', component: () => null })
@@ -600,8 +600,8 @@ describe('service.openTab auto-expand for content opens', () => {
     collapseRightPanel(store)
     service.openTab({ type: 'editor', title: 'main.ts', path: '/p/main.ts' })
     const state = store.getSnapshot().state!
-    expect(state.panelOpen).toBe(true)
-    expect(allLeaves(state.splits).flatMap(l => l.tabs).some(t => t.type === 'editor')).toBe(true)
+    expect(state.panelOpen).toBe(false)
+    expect(state.centerTabs.some(t => t.type === 'editor')).toBe(true)
   })
 
   it('expands the collapsed right panel for a URL (browser) open on a wide viewport', () => {
@@ -614,19 +614,17 @@ describe('service.openTab auto-expand for content opens', () => {
     expect(store.getSnapshot().state!.panelOpen).toBe(true)
   })
 
-  it('a wide-viewport path open landing in the bottom tree expands the bottom panel instead', () => {
+  it('a file open lands on the conversation header even when a pane was last touched in the bottom tree', () => {
     const store = createSidebarStore()
     const service = createBetterSidebarService(store)
     service.registerTab({ id: 'editor', title: 'Editor', component: () => null })
     store.setSession('s1')
-    // The last-touched pane lives in the bottom tree and BOTH panels are
-    // collapsed: the open must surface the bottom panel, not the right one.
     store.reduce(s => ({ ...s, activePane: (s.bottomSplits as { id: string }).id, panelOpen: false, bottomOpen: false }))
     service.openTab({ type: 'editor', title: 'main.ts', path: '/p/main.ts' })
     const state = store.getSnapshot().state!
-    expect(state.bottomOpen).toBe(true)
+    expect(state.bottomOpen).toBe(false)
     expect(state.panelOpen).toBe(false)
-    expect(allLeaves(state.bottomSplits).flatMap(l => l.tabs).some(t => t.type === 'editor')).toBe(true)
+    expect(state.centerTabs.some(t => t.type === 'editor')).toBe(true)
   })
 
   it('keeps a collapsed panel for a type-only open on a wide viewport', () => {
@@ -655,7 +653,7 @@ describe('service.openTab auto-expand for content opens', () => {
     }
   })
 
-  it('expands on a wide viewport even when the open focuses an existing tab (id dedupe)', () => {
+  it('a wide-viewport re-open of the same file focuses the existing conversation-header tab (id dedupe)', () => {
     const store = createSidebarStore()
     const service = createBetterSidebarService(store)
     service.registerTab({ id: 'editor', title: 'Editor', component: () => null })
@@ -664,8 +662,8 @@ describe('service.openTab auto-expand for content opens', () => {
     collapseRightPanel(store)
     service.openTab({ type: 'editor', title: 'main.ts', path: '/p/main.ts' })
     const state = store.getSnapshot().state!
-    expect(state.panelOpen).toBe(true)
-    expect(allLeaves(state.splits).flatMap(l => l.tabs).filter(t => t.type === 'editor')).toHaveLength(1)
+    expect(state.panelOpen).toBe(false)
+    expect(state.centerTabs.filter(t => t.type === 'editor')).toHaveLength(1)
   })
 })
 
@@ -805,17 +803,17 @@ describe('openFile (v0.12.0)', () => {
     store.setSession('s1')
     service.openFile({ sessionId: 's1', cwd: '/p' }, '/p/src/main.ts')
     const state = store.getSnapshot().state!
-    const tab = allLeaves(state.splits).flatMap(l => l.tabs).find(t => t.type === 'editor')
+    const tab = state.centerTabs.find(t => t.type === 'editor')
     expect(tab?.title).toBe('main.ts')
     expect(tab?.path).toBe('/p/src/main.ts')
     // Windows separators are handled too.
     service.openFile({ sessionId: 's1' }, 'C:\\x\\y\\spec.ts', 'custom title')
-    const tabs = allLeaves(store.getSnapshot().state!.splits).flatMap(l => l.tabs).filter(t => t.type === 'editor')
+    const tabs = store.getSnapshot().state!.centerTabs.filter(t => t.type === 'editor')
     expect(tabs[tabs.length - 1]?.title).toBe('custom title')
     expect(tabs[tabs.length - 1]?.path).toBe('C:\\x\\y\\spec.ts')
   })
 
-  it('joins the conversation header when a file is already docked there', () => {
+  it('lands on the conversation header (file previews dock there by default)', () => {
     const store = createSidebarStore()
     const service = createBetterSidebarService(store)
     service.registerTab({
@@ -826,9 +824,6 @@ describe('openFile (v0.12.0)', () => {
     })
     store.setSession('s1')
     service.openFile({ sessionId: 's1' }, '/p/TimeUtils.java')
-    const first = allLeaves(store.getSnapshot().state!.splits).flatMap(l => l.tabs).find(t => t.type === 'editor')
-    expect(first).toBeDefined()
-    store.reduce(s => dockTabToCenter(s, (s.splits as { id: string }).id, first!.id))
     service.openFile({ sessionId: 's1' }, '/p/ThreadPoolConfiguration.java')
     const state = store.getSnapshot().state!
     expect(state.centerTabs.map(t => t.path)).toEqual([
@@ -1051,7 +1046,7 @@ describe('independent CR follow-up fixes', () => {
     store.setSession('s2')
     expect(store.getSnapshot().state?.panelOpen).toBe(false)
     expect(store.getSnapshot().state?.bottomOpen).toBe(false)
-    expect(allLeaves(store.getSnapshot().state!.splits).flatMap(l => l.tabs).some(t => t.type === 'editor')).toBe(true)
+    expect(store.getSnapshot().state!.centerTabs.some(t => t.type === 'editor')).toBe(true)
   })
 
   it('closeTab/activateTab accept an optional scope that rides to the callback', () => {

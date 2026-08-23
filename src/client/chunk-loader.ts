@@ -74,13 +74,31 @@ export const CHUNK_EXTERNALS: readonly string[] = [
 /** Chunk script endpoint served by the plugin host half (src/bundle-route.ts). */
 const CHUNK_URL = (name: ChunkName): string => `/sidebar/bundle/${name}.js`
 
-/** The client module system surface this loader needs (window.__DSH_MODULES__). */
+/** The client module system surface this loader needs (`import` only). */
 interface ChunkModuleSystem {
   import(specifier: string): Promise<unknown>
 }
 
-/** Resolve the shell-installed module system (set before any plugin activates). */
+/**
+ * The module system instance the client entry hands down from the `modules`
+ * cordis service (`ctx.get('modules')`). DSH >= 0.1.1 removed the
+ * `window.__DSH_MODULES__` global and exposes the module system only through
+ * that service, so the entry injects it here; DSH <= 0.1.0 (rc.7) still
+ * publishes the global, which stays as the fallback below.
+ */
+let injectedModuleSystem: ChunkModuleSystem | undefined
+
+/** Inject the runtime module system (called once per plugin activation). */
+export function setChunkModuleSystem(modules: ChunkModuleSystem | undefined): void {
+  injectedModuleSystem = modules
+}
+
+/**
+ * Resolve the module system: the injected service instance wins (DSH >= 0.1.1),
+ * then the legacy global (DSH <= 0.1.0 rc.7). `undefined` means neither exists.
+ */
 function moduleSystem(): ChunkModuleSystem | undefined {
+  if (injectedModuleSystem !== undefined) return injectedModuleSystem
   return (globalThis as { __DSH_MODULES__?: ChunkModuleSystem }).__DSH_MODULES__
 }
 
@@ -195,4 +213,5 @@ export function resetChunks(): void {
   cache.clear()
   testLoaders.clear()
   externalsRequire = undefined
+  injectedModuleSystem = undefined
 }

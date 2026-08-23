@@ -10,7 +10,7 @@
  *
  * 2. Tab crash containment: a render error inside ONE tab's content must not
  *    take down the whole sidebar. The per-tab boundary shows a strip inside
- *    that tab's pane while the toggle cluster, the other tabs, and the panel
+ *    that tab's pane while the activity bar, the other tabs, and the panel
  *    itself stay alive; the retry button recovers a transient crash.
  *
  * Rendered with the REAL Sidebar shell + real store/service against a minimal
@@ -113,9 +113,10 @@ describe('tab crash containment', () => {
     // The strip lives inside the tab's pane — the crash is contained.
     expect(container.textContent).toContain('boom')
     expect(container.textContent).toContain(t('terminalRetry'))
-    // The toggle cluster and the panel itself survived (no full-tree swap):
-    // the collapse button is still there and the layout push is still live.
-    expect(container.querySelector(`[aria-label="${t('collapse')}"]`)).not.toBeNull()
+    // The panel itself survived (no full-tree swap): the activity bar — the
+    // panel's open/close affordance now that the toggle cluster is gone — is
+    // still mounted, and the layout push is still live.
+    expect(container.querySelector('[data-sidebar-activity-bar]')).not.toBeNull()
     expect(document.documentElement.style.getPropertyValue('--dsh-sidebar-width')).toBe(
       `${store.getSnapshot().state!.width}px`,
     )
@@ -146,5 +147,40 @@ describe('tab crash containment', () => {
     act(() => { retry!.click() })
     expect(container.textContent).toContain('recovered')
     expect(container.textContent).not.toContain('transient')
+  })
+})
+
+describe('center preview fallback tab strip (fresh conversation)', () => {
+  it('renders a 对话 tab + closable file tab when the host header has no tablist', () => {
+    const { container, service, store } = mountSidebar()
+    service.registerTab({ id: 'editor', title: () => 'Editor', component: () => 'preview-body' })
+    act(() => { service.openTab({ type: 'editor', title: 'pom.xml', path: '/p/pom.xml' }) })
+    const state = store.getSnapshot().state!
+    expect(state.centerTabs.map(t => t.title)).toContain('pom.xml')
+    expect(state.centerActive).not.toBeNull()
+    const strip = container.querySelector('[class*="centerPreviewTabs"]')
+    expect(strip).not.toBeNull()
+    expect(strip!.textContent).toContain(t('conversationTab'))
+    expect(strip!.textContent).toContain('pom.xml')
+    const close = strip!.querySelector('[class*="centerPreviewClose"]')
+    expect(close).not.toBeNull()
+    // Clicking the file tab's close button removes it entirely.
+    act(() => { (close as HTMLElement).click() })
+    expect(store.getSnapshot().state!.centerTabs).toHaveLength(0)
+    expect(store.getSnapshot().state!.centerActive).toBeNull()
+  })
+
+  it('clicking the 对话 tab hides the preview but keeps the docked file', () => {
+    const { container, service, store } = mountSidebar()
+    service.registerTab({ id: 'editor', title: () => 'Editor', component: () => 'preview-body' })
+    act(() => { service.openTab({ type: 'editor', title: 'pom.xml', path: '/p/pom.xml' }) })
+    const strip = container.querySelector('[class*="centerPreviewTabs"]')
+    const chatTab = [...(strip?.querySelectorAll('[role="tab"]') ?? [])]
+      .find(tab => tab.textContent === t('conversationTab'))
+    expect(chatTab).toBeDefined()
+    act(() => { (chatTab as HTMLElement).click() })
+    // The preview is hidden (centerActive → null) but the file stays docked.
+    expect(store.getSnapshot().state!.centerActive).toBeNull()
+    expect(store.getSnapshot().state!.centerTabs).toHaveLength(1)
   })
 })

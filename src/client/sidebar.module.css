@@ -20,62 +20,6 @@
    switching skins in the dsh-web-ui skin center re-skins the sidebar panels
    automatically (see AGENTS.md §8). */
 
-/* The persistent expand/collapse cluster at the top-right corner: two rail
-   controls side by side (bottom panel's glyph LEFT of the right panel's).
-   Always pinned to the viewport corner — inside the right panel's top-right
-   while it is open, sitting flush in the 34px tab strip (28px buttons at
-   top: 3) whose right end it really squeezes. z-index 45: above the panels
-   (40) but below the app's overlay stack (menus/tooltips/modals sit at
-   100+), so a cordis approval popup is never hidden behind the workbench
-   (issue #52). */
-.toggleCluster {
-  position: fixed;
-  top: 3px;
-  right: 10px;
-  z-index: 45;
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
-}
-
-/* The tab strip of the OPEN right panel reserves the cluster's width at its
-   right end, so the tabs genuinely yield space to the toggle cluster (never
-   hiding under it). */
-.panel:not(.panelHidden) .tabBar {
-  padding-right: 72px;
-}
-
-/* The closed-state affordance is the native rail icon control: a plain
-   28px circle (the app's icon-button size — the cluster must stay inside
-   the 34px tab-strip band so it never covers the pane headers below),
-   transparent fill, secondary ink; hover raises the fill. No border, no
-   shadow — the icon alone is the affordance. */
-.toggleButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  transition:
-    background var(--ds-transition-duration-slow) var(--ds-ease-in-out),
-    color var(--ds-transition-duration-slow) var(--ds-ease-in-out);
-}
-
-.toggleButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-.toggleButton:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 .panel {
   position: fixed;
   top: 0;
@@ -254,10 +198,6 @@
    (`--dsh-title-bar-strip`, written by the Sidebar shell from
    `titleBarStripPx`; 40px fallback). The bottom panel is unaffected: it
    sits at the window's bottom, never under the top strip. */
-:global(body[data-dsh-title-bar-compat]) .toggleCluster {
-  top: calc(var(--dsh-title-bar-strip, 40px) + 3px);
-}
-
 :global(body[data-dsh-title-bar-compat]) .panel {
   /* The caption strip is drawn over the panel's own top edge: keep the
      surface full-height and push the content (the tab strip) below the
@@ -700,6 +640,78 @@
 }
 
 .centerTabClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The overlay's own tab strip (fresh conversation, no host 对话 / 轨迹
+   header): a leading 对话 tab to click back to the chat + one file tab per
+   docked file. Mirrors the host strip so the preview stays closable. */
+.centerPreviewTabs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 34px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.centerPreviewTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.centerPreviewTab {
+  flex: none;
+  max-width: 200px;
+  min-width: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 10px;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-secondary);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.centerPreviewTab:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.centerPreviewTabActive {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.centerPreviewLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.centerPreviewClose {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.centerPreviewClose:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
@@ -1994,6 +2006,56 @@
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xxs-12);
+  /* The repo picker is a <button> now (opens a modal); match the select's
+     compact look and ellipsize the long repo path. */
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Multi-repo picker modal list (a workspace holding several git roots). */
+.gitRepoList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.gitRepoItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  text-align: left;
+  cursor: pointer;
+}
+
+.gitRepoItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitRepoItem[aria-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.gitRepoName {
+  font-weight: 500;
+}
+
+.gitRepoRel {
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gitGroupSelect {
@@ -2653,7 +2715,6 @@
 
 /* Keyboard focus stays visible on every interactive control (the styling
    policy requires focus visibility; the accent token doubles as the ring). */
-.toggleButton:focus-visible,
 .bottomClose:focus-visible,
 .iconButton:focus-visible,
 .tab:focus-visible,
@@ -2682,8 +2743,6 @@
   .panelHidden,
   .bottomPanel,
   .bottomPanelHidden,
-  .toggleCluster,
-  .toggleButton,
   .tab,
   .paneCard,
   .explorerRow,

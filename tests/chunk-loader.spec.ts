@@ -19,6 +19,7 @@ import {
   loadChunk,
   registerChunkForTests,
   resetChunks,
+  setChunkModuleSystem,
   setChunkScriptLoaderForTests,
 } from '../src/client/chunk-loader.ts'
 import type { ChunkExports } from '../src/client/chunk-loader.ts'
@@ -189,6 +190,47 @@ describe('production path (script injection + global registry + externals requir
   it('resetChunks is a safe no-op without a module system', () => {
     resetChunks()
     expect(() => resetChunks()).not.toThrow()
+  })
+})
+
+describe('injected module system (DSH >= 0.1.1 — no window.__DSH_MODULES__)', () => {
+  it('loads a chunk through an injected module system when the global is absent', async () => {
+    // rc.2+ removed window.__DSH_MODULES__: the shell hands the module system
+    // to the plugin via the `modules` cordis service (ctx.get('modules')).
+    // The loader must materialize through the injected instance, not the global.
+    const injected = { import: vi.fn(async (specifier: string) => ({ seed: specifier })) }
+    setChunkModuleSystem(injected)
+    const loaded: string[] = []
+    setChunkScriptLoaderForTests(async (src) => {
+      loaded.push(src)
+      simulateScript('editor', (require) => ({ TextEditor: `view:${String(require('react'))}` }))
+    })
+    const exports = await loadChunk('editor')
+    expect(loaded).toEqual(['/sidebar/bundle/editor.js'])
+    expect(exports).toEqual({ TextEditor: 'view:[object Object]' })
+    expect(injected.import).toHaveBeenCalledTimes(CHUNK_EXTERNALS.length)
+    // No global was installed, so the global path was never consulted.
+    expect((globalThis as Record<string, unknown>).__DSH_MODULES__).toBeUndefined()
+  })
+
+  it('prefers the injected module system over a stale global', async () => {
+    const global = installModuleSystem()
+    const injected = { import: vi.fn(async (specifier: string) => ({ injected: specifier })) }
+    setChunkModuleSystem(injected)
+    setChunkScriptLoaderForTests(async () => {
+      simulateScript('editor', (require) => ({ TextEditor: `v:${String(require('react'))}` }))
+    })
+    const exports = await loadChunk('editor')
+    expect(exports.TextEditor).toBe('v:[object Object]')
+    expect(injected.import).toHaveBeenCalledTimes(CHUNK_EXTERNALS.length)
+    expect(global.import).not.toHaveBeenCalled()
+  })
+
+  it('resetChunks clears the injected module system (HMR re-activation)', async () => {
+    setChunkModuleSystem({ import: vi.fn(async (specifier: string) => ({ seed: specifier })) })
+    resetChunks()
+    setChunkScriptLoaderForTests(async () => { /* never reached */ })
+    await expect(loadChunk('editor')).rejects.toThrow('client module system unavailable')
   })
 })
 

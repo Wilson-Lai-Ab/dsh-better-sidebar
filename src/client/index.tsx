@@ -13,7 +13,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { Context } from '../context-types.ts'
 import { createSidebarStore } from './state.ts'
 import { createBetterSidebarService, matchUrlTarget } from './service.ts'
-import { resetChunks } from './chunk-loader.ts'
+import { resetChunks, setChunkModuleSystem } from './chunk-loader.ts'
 import { registerBuiltins } from './builtins/index.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { RenderBoundary } from './RenderBoundary.tsx'
@@ -100,6 +100,13 @@ export function apply(ctx: Context): void {
     // registered by a previous fiber (HMR) and drop the in-memory load cache
     // so the next lazy open re-fetches the current chunk scripts.
     resetChunks()
+    // DSH >= 0.1.1 removed window.__DSH_MODULES__ and exposes the module
+    // system through the `modules` cordis service; inject it into the
+    // chunk loader so lazy chunks can resolve their externals. The service
+    // is optional (ctx.get, not inject) so the plugin still activates on
+    // older DSH versions where the global is the sole source.
+    type ChunkModuleSystem = { import(specifier: string): Promise<unknown> }
+    setChunkModuleSystem(ctx.get('modules') as ChunkModuleSystem | undefined)
     ctx.effect(() => {
       let disposed = false
       let root: Root | undefined
