@@ -432,4 +432,45 @@ describe('TabBar strip filter', () => {
       container.remove()
     }
   })
+
+  it('survives empty → file-preview strip without a hooks mismatch (React #300)', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root: Root = createRoot(container)
+    const isPreview = (tab: SidebarTab): boolean => tab.type === 'editor' || tab.type === 'diff'
+    const props = {
+      paneId: 'pane:1',
+      active: null as string | null,
+      onActivate: () => {},
+      onClose: () => {},
+      onDropTab: () => {},
+      stripTabFilter: isPreview,
+    }
+    act(() => {
+      root.render(createElement(TabBar, {
+        ...props,
+        tabs: [{ id: 'ex', type: 'explorer', title: 'Explorer' }],
+      }))
+    })
+    expect(container.querySelector('[class*="tabBar"]')).toBeNull()
+    expect(() => {
+      act(() => {
+        root.render(createElement(TabBar, {
+          ...props,
+          active: 'ed',
+          tabs: [
+            { id: 'ex', type: 'explorer', title: 'Explorer' },
+            { id: 'ed', type: 'editor', title: 'recent.ts' },
+          ],
+        }))
+      })
+    }).not.toThrow()
+    try {
+      const titles = [...container.querySelectorAll('[class*="tabTitle"]')].map(el => (el.textContent ?? '').trim())
+      expect(titles).toEqual(['recent.ts'])
+    } finally {
+      act(() => { root.unmount() })
+      container.remove()
+    }
+  })
 })

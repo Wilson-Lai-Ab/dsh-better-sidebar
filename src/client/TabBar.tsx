@@ -107,12 +107,6 @@ export function TabBar(props: {
   const listRef = useRef<HTMLDivElement>(null)
   const stripTabs = stripTabFilter === undefined ? tabs : tabs.filter(stripTabFilter)
 
-  // An empty strip renders NO chrome: the activity bar owns the tool views,
-  // so a pane showing only a tool view (explorer / git / terminal …) has an
-  // empty file-preview strip — without this early return it draws a bare
-  // 34px bar across the top (the "white block" the user asked to remove).
-  if (stripTabs.length === 0) return null
-
   // Wheel over the strip scrolls the tab row horizontally (a plain mouse
   // wheel emits deltaY, which overflow-x alone never consumes). Bound as a
   // native NON-passive listener: React registers onWheel passively at the
@@ -131,7 +125,11 @@ export function TabBar(props: {
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => { el.removeEventListener('wheel', onWheel) }
-  }, [])
+    // Re-bind when the strip appears: an empty preview strip returns null,
+    // so listRef is unset on the first paint and this effect would otherwise
+    // stay a no-op after opening a file (React #300 fix moved the early
+    // return below the hooks).
+  }, [stripTabs.length])
 
   useEffect(() => {
     const clear = (): void => { setTabDragging(false); setDragOver(false) }
@@ -144,6 +142,14 @@ export function TabBar(props: {
       window.removeEventListener('blur', clear)
     }
   }, [])
+
+  // An empty strip renders NO chrome: the activity bar owns the tool views,
+  // so a pane showing only a tool view (explorer / git / terminal …) has an
+  // empty file-preview strip — without this early return it draws a bare
+  // 34px bar across the top (the "white block" the user asked to remove).
+  // MUST sit AFTER every hook: opening a file grows the strip from 0 → 1
+  // tabs; an early return before useEffect is React #300 (minified error).
+  if (stripTabs.length === 0) return null
 
   return (
     <div
