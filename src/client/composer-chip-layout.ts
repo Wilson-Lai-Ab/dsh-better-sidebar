@@ -1,15 +1,15 @@
 /**
- * Host chips are one U+FFFC wide (~4em). Long labels overflow that slot.
- * Pad the draft with spaces (not CSS paddingRight) so BOTH the textarea and
- * the decoration backdrop start the next character after the visible pill.
- * Using both systems at once paints the typed text twice — once against the
- * bubble, once far to the right.
+ * Older hosts sized a chip to one U+FFFC (~4em); current DSH writes the
+ * `@label` in-flow so the slot already matches the text. Pad the draft with
+ * spaces (not CSS paddingRight) only when the visible pill is still wider
+ * than that slot, so BOTH the textarea and the decoration backdrop start
+ * the next character after the pill.
  */
 import type { Context } from '../context-types.ts'
 import {
-  caretHitsChip, composerTextarea, padSpacesAfterObject, placeComposerCaretAfterChips,
+  caretHitsChip, composerTextarea, occurrenceChipLength, padSpacesAfterObject, placeComposerCaretAfterChips,
 } from './composer-chip-caret.ts'
-import { sessionInput } from './conversation-draft.ts'
+import { sessionInput } from './conversation-input.ts'
 import { isPluginDragActive } from './dom-sync.ts'
 
 const MAX_PAD_SPACES = 80
@@ -21,8 +21,9 @@ export function spacesForOverflow(extraPx: number, spaceWidth: number): number {
 
 export function spacesToClearChip(chip: HTMLElement, spaceWidth: number): number {
   const label = chip.querySelector(':scope > span')
-  if (!(label instanceof HTMLElement) || spaceWidth <= 0) return 1
-  return spacesForOverflow(label.getBoundingClientRect().right + 6 - chip.getBoundingClientRect().right, spaceWidth)
+  const box = label instanceof HTMLElement ? label : chip
+  if (spaceWidth <= 0) return 1
+  return spacesForOverflow(box.getBoundingClientRect().right + 6 - chip.getBoundingClientRect().right, spaceWidth)
 }
 
 function measureSpaceWidth(el: HTMLTextAreaElement): number {
@@ -36,10 +37,11 @@ function measureSpaceWidth(el: HTMLTextAreaElement): number {
   return width > 0.5 ? width : 8
 }
 
-/** True when only the host gap (spaces / end) follows this placeholder. */
-export function chipHasNoUserText(draft: string, objectOffset: number): boolean {
-  if (draft[objectOffset] !== '\uFFFC') return false
-  let i = objectOffset + 1
+/** True when only the host gap (spaces / end) follows this chip. */
+export function chipHasNoUserText(draft: string, objectOffset: number, length?: number): boolean {
+  const spanLen = length !== undefined && length > 0 ? length : (draft[objectOffset] === '\uFFFC' ? 1 : 0)
+  if (spanLen <= 0) return false
+  let i = objectOffset + spanLen
   while (draft[i] === ' ') i += 1
   return draft[i] === undefined
 }
@@ -59,14 +61,17 @@ function padDraftToClearPills(ctx: Context): boolean {
     const id = Number(chip.dataset.occurrence)
     const occurrence = snapshot.occurrences?.find(item => item.occurrenceId === id)
     if (occurrence === undefined) continue
-    if (!chipHasNoUserText(next, occurrence.offset)) continue
-    next = padSpacesAfterObject(next, occurrence.offset, spacesToClearChip(chip, spaceWidth))
+    const length = occurrenceChipLength(next, occurrence)
+    if (!chipHasNoUserText(next, occurrence.offset, length)) continue
+    next = padSpacesAfterObject(next, occurrence.offset, spacesToClearChip(chip, spaceWidth), length)
   }
   if (next === snapshot.draft) return false
   const caret = el.selectionStart ?? next.length
-  const keepCaret = caretHitsChip(snapshot.draft, caret)
+  const keepCaret = snapshot.occurrences?.some(item => (
+    caretHitsChip(snapshot.draft, caret, occurrenceChipLength(snapshot.draft, item))
+  )) === true
   input.setDraft(next)
-  if (keepCaret) requestAnimationFrame(() => { placeComposerCaretAfterChips() })
+  if (keepCaret) requestAnimationFrame(() => { placeComposerCaretAfterChips(snapshot.occurrences) })
   return true
 }
 
@@ -74,7 +79,13 @@ function padDraftToClearPills(ctx: Context): boolean {
 export function settleComposerChipGaps(ctx: Context): void {
   requestAnimationFrame(() => {
     padDraftToClearPills(ctx)
-    requestAnimationFrame(() => { placeComposerCaretAfterChips() })
+    requestAnimationFrame(() => {
+      const sessionId = ctx.sessions.list.getSnapshot().current
+      const occurrences = sessionId === undefined
+        ? undefined
+        : sessionInput(ctx, sessionId)?.state.getSnapshot().occurrences
+      placeComposerCaretAfterChips(occurrences)
+    })
   })
 }
 

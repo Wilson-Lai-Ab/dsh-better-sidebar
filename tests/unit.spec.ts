@@ -1190,78 +1190,28 @@ describe('side card preferences', () => {
   it('parses a valid value and clamps the percent into the contract range', async () => {
     expect(await loadPrefs(wire({ openByDefault: false, defaultWidthPercent: 80, autoOpenSubagent: false, agentTerminalTools: true })))
       .toEqual({
+        ...SIDEBAR_PREFS_DEFAULTS,
         openByDefault: false,
         defaultWidthPercent: 60,
         autoOpenSubagent: false,
-        autoOpenJobs: true,
         agentTerminalTools: true,
-        bottomPanelAutoTerminal: true,
-        terminalFontFamily: '',
-        terminalFontSize: 13,
-        interceptOpenPath: true,
-        titleBarCompat: false,
-        titleBarStripPx: 40,
-        htmlViewerNoSandbox: false,
-        htmlViewerDefaultUnsafe: false,
-        browserNoSandbox: false,
-        browserInterceptLinks: true,
-        browserInterceptHttp: true,
-        browserInterceptHttps: false,
-        tabsEnabled: {},
-        viewersEnabled: {},
-        pluginSettings: {},
       })
   })
 
   it('falls back per-field when a stored field is malformed', async () => {
     expect(await loadPrefs(wire({ openByDefault: 'yes', defaultWidthPercent: 33, autoOpenSubagent: 'no', agentTerminalTools: 'yes' })))
       .toEqual({
-        openByDefault: true,
+        ...SIDEBAR_PREFS_DEFAULTS,
         defaultWidthPercent: 33,
-        autoOpenSubagent: true,
-        autoOpenJobs: true,
-        agentTerminalTools: false,
-        bottomPanelAutoTerminal: true,
-        terminalFontFamily: '',
-        terminalFontSize: 13,
-        interceptOpenPath: true,
-        titleBarCompat: false,
-        titleBarStripPx: 40,
-        htmlViewerNoSandbox: false,
-        htmlViewerDefaultUnsafe: false,
-        browserNoSandbox: false,
-        browserInterceptLinks: true,
-        browserInterceptHttp: true,
-        browserInterceptHttps: false,
-        tabsEnabled: {},
-        viewersEnabled: {},
-        pluginSettings: {},
       })
   })
 
   it('defaults autoOpenSubagent to true and agentTerminalTools to false when the stored value is absent or malformed', async () => {
     expect(await loadPrefs(wire({ openByDefault: false, defaultWidthPercent: 40 })))
       .toEqual({
+        ...SIDEBAR_PREFS_DEFAULTS,
         openByDefault: false,
         defaultWidthPercent: 40,
-        autoOpenSubagent: true,
-        autoOpenJobs: true,
-        agentTerminalTools: false,
-        bottomPanelAutoTerminal: true,
-        terminalFontFamily: '',
-        terminalFontSize: 13,
-        interceptOpenPath: true,
-        titleBarCompat: false,
-        titleBarStripPx: 40,
-        htmlViewerNoSandbox: false,
-        htmlViewerDefaultUnsafe: false,
-        browserNoSandbox: false,
-        browserInterceptLinks: true,
-        browserInterceptHttp: true,
-        browserInterceptHttps: false,
-        tabsEnabled: {},
-        viewersEnabled: {},
-        pluginSettings: {},
       })
     expect((await loadPrefs(wire({ openByDefault: true, defaultWidthPercent: 40, autoOpenSubagent: 1 }))).autoOpenSubagent)
       .toBe(true)

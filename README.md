@@ -157,6 +157,7 @@ dsh plugin --profile web add dsh-better-sidebar
 | 页面出现**两个侧边栏** | 双挂载：`~/.dsh/profiles/web/cordis.patch.yml` 还留着旧的手动挂载行，删掉那段 `- insert: ... better-sidebar ...`（一键脚本会自动清）。 |
 | Windows 下终端无法使用 | `node-pty` 依赖预编译二进制；若当前 Node 版本没有对应产物，需装编译工具链（VS Build Tools）。主流 Node 版本一般已有预编译。 |
 | Windows 没有 bash / curl | 直接用 PowerShell 一键命令；或安装 Git Bash / WSL 再跑 bash 命令。 |
+| 经 `dsh-idea-style` / `github:` 安装后侧边栏仍是旧的 | Git 安装不会跑本地 `tsdown`。仓库必须带 `lib/`。更新聚合包后重启 dsh web 并硬刷新。 |
 
 </details>
 

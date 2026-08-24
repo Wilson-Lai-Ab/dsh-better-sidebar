@@ -90,6 +90,13 @@ describe('registry manifest consistency (dsh.plugin.json)', () => {
     expect(existsSync(resolve(ROOT, manifest.client!.main!))).toBe(true)
   })
 
+  it('does not gitignore lib/ (github: installs never run a local tsdown)', () => {
+    const ignore = readFileSync(resolve(ROOT, '.gitignore'), 'utf8')
+    expect(ignore.split(/\r?\n/).some(line => line.trim() === 'lib/' || line.trim() === 'lib')).toBe(false)
+    expect(existsSync(resolve(ROOT, 'lib/index.js'))).toBe(true)
+    expect(existsSync(resolve(ROOT, 'lib/client.js'))).toBe(true)
+  })
+
   it('the registry bundle registers exactly the manifest id and the official bundle the package name (no swap)', () => {
     const registryId = bundleId(manifest.client!.main!)
     expect(registryId).toBe(manifest.id)

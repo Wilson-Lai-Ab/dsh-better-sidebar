@@ -5,7 +5,8 @@
  * Capture-phase so the host's image-only drop handler does not swallow it.
  */
 import type { Context } from '../context-types.ts'
-import { insertFileRef, sessionInput } from './conversation-draft.ts'
+import { insertFileRef } from './conversation-draft.ts'
+import { sessionInput } from './conversation-input.ts'
 import { requestReveal } from './editor-reveal.ts'
 import { decodeFileRef, FILE_REF_MIME, FILE_SOURCE, fileBaseName, parseAtToken, type FileRef } from './file-ref.ts'
 import { resolveSidebarPath } from './produced-files.ts'
@@ -62,12 +63,13 @@ export function caretOffsetAt(x: number, y: number): number | null {
 }
 
 export function occurrenceAtOffset(
-  occurrences: readonly { occurrenceId: number; offset: number }[] | undefined,
+  occurrences: readonly { occurrenceId: number; offset: number; length?: number }[] | undefined,
   offset: number,
 ): number | null {
   if (occurrences === undefined) return null
   for (const item of occurrences) {
-    if (offset === item.offset || offset === item.offset + 1) return item.occurrenceId
+    const span = item.length !== undefined && item.length > 0 ? item.length : 1
+    if (offset >= item.offset && offset <= item.offset + span) return item.occurrenceId
   }
   return null
 }

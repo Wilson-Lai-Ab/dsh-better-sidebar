@@ -141,7 +141,9 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
-lib/
+# github: installs (dsh-idea-style) copy this repo as-is and do not run tsdown.
+# Ship the built JS; keep maps local.
+lib/**/*.map
 
 # plugin-registry install staging (assembled by scripts/package-registry.mjs)
 registry/

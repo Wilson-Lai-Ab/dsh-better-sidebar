@@ -4,16 +4,16 @@
  * (the inject-free read the app's own plugins use); a missing service or
  * scope degrades to a logged no-op, never a crash.
  */
-import type { Context, SidebarConversation, SidebarSessionInput } from '../context-types.ts'
-import { placeComposerCaretAfterChips } from './composer-chip-caret.ts'
+import type { Context } from '../context-types.ts'
+import { sessionInput } from './conversation-input.ts'
 import { fileClipboardText, fileReferenceInsert, isPlainTextSelection, type FileRef } from './file-ref.ts'
 
-export function sessionInput(ctx: Context, sessionId: string): SidebarSessionInput | undefined {
-  const actx = ctx.sessions.scope(sessionId)
-  if (actx === undefined) return undefined
-  const conversation = ctx.get('conversation') as SidebarConversation | undefined
-  if (conversation === undefined) return undefined
-  return conversation.input.for(actx)
+export { sessionInput }
+
+function placeCaret(occurrences: readonly { offset: number; length?: number; label?: string }[] | undefined): void {
+  void import('./composer-chip-caret.ts').then(({ placeComposerCaretAfterChips }) => {
+    placeComposerCaretAfterChips(occurrences)
+  })
 }
 
 /**
@@ -58,14 +58,14 @@ export function insertFileRef(ctx: Context, sessionId: string, ref: FileRef): bo
         draftRev: snapshot.draftRev,
       })
       if (ok) {
-        requestAnimationFrame(() => { placeComposerCaretAfterChips() })
+        requestAnimationFrame(() => { placeCaret(input.state.getSnapshot().occurrences) })
         return true
       }
     }
     const text = fileClipboardText(ref)
     const draft = snapshot.draft
     input.setDraft(draft.trim() === '' ? text : `${draft}${/\s$/.test(draft) ? '' : ' '}${text}`)
-    requestAnimationFrame(() => { placeComposerCaretAfterChips() })
+    requestAnimationFrame(() => { placeCaret(input.state.getSnapshot().occurrences) })
     return true
   } catch (error) {
     console.warn('[dsh-better-sidebar] file chip insert failed:', error)
