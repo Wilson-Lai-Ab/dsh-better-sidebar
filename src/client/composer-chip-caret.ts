@@ -6,7 +6,7 @@
  * Backspace / Delete remove the whole chip via setDraft.
  */
 import type { Context } from '../context-types.ts'
-import { sessionInput } from './conversation-draft.ts'
+import { sessionInput } from './conversation-input.ts'
 const OBJECT = '\uFFFC'
 
 export function composerTextarea(): HTMLTextAreaElement | null {

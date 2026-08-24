@@ -9,7 +9,7 @@ import type { Context } from '../context-types.ts'
 import {
   caretHitsChip, composerTextarea, occurrenceChipLength, padSpacesAfterObject, placeComposerCaretAfterChips,
 } from './composer-chip-caret.ts'
-import { sessionInput } from './conversation-draft.ts'
+import { sessionInput } from './conversation-input.ts'
 import { isPluginDragActive } from './dom-sync.ts'
 
 const MAX_PAD_SPACES = 80

@@ -5,7 +5,8 @@
  * Capture-phase so the host's image-only drop handler does not swallow it.
  */
 import type { Context } from '../context-types.ts'
-import { insertFileRef, sessionInput } from './conversation-draft.ts'
+import { insertFileRef } from './conversation-draft.ts'
+import { sessionInput } from './conversation-input.ts'
 import { requestReveal } from './editor-reveal.ts'
 import { decodeFileRef, FILE_REF_MIME, FILE_SOURCE, fileBaseName, parseAtToken, type FileRef } from './file-ref.ts'
 import { resolveSidebarPath } from './produced-files.ts'
