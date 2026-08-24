@@ -1,7 +1,8 @@
 /**
  * File / selection references inserted into the composer as chips (Cursor-
- * style `File.java (108-121)`). The draft holds a U+FFFC placeholder; the
- * model form is expanded on send via the `@` trigger source codec.
+ * style `File.java (108-121)`). The draft holds `@label` (or a U+FFFC
+ * placeholder on older hosts); the model form is expanded on send via the
+ * `@` trigger source codec.
  */
 import { relativeTo } from './paths.ts'
 import { headerOf, SELECTION_LIMIT, type SelectionLines } from './selection-payload.ts'

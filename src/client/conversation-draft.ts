@@ -58,14 +58,18 @@ export function insertFileRef(ctx: Context, sessionId: string, ref: FileRef): bo
         draftRev: snapshot.draftRev,
       })
       if (ok) {
-        requestAnimationFrame(() => { placeComposerCaretAfterChips() })
+        requestAnimationFrame(() => {
+          placeComposerCaretAfterChips(input.state.getSnapshot().occurrences)
+        })
         return true
       }
     }
     const text = fileClipboardText(ref)
     const draft = snapshot.draft
     input.setDraft(draft.trim() === '' ? text : `${draft}${/\s$/.test(draft) ? '' : ' '}${text}`)
-    requestAnimationFrame(() => { placeComposerCaretAfterChips() })
+    requestAnimationFrame(() => {
+      placeComposerCaretAfterChips(input.state.getSnapshot().occurrences)
+    })
     return true
   } catch (error) {
     console.warn('[dsh-better-sidebar] file chip insert failed:', error)

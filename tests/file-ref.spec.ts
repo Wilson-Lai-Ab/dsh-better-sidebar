@@ -5,6 +5,9 @@
 import { describe, expect, it } from 'vitest'
 import { caretAfterChip, caretHitsChip, draftAfterChipDelete, padSpacesAfterObject } from '../src/client/composer-chip-caret.ts'
 import { chipHasNoUserText, spacesForOverflow } from '../src/client/composer-chip-layout.ts'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseSentFileFence, splitUserFences } from '../src/client/chat-file-chips.ts'
 import { looksLikeFileAt, occurrenceAtOffset } from '../src/client/composer-file-drop.ts'
 import {
@@ -128,6 +131,14 @@ describe('occurrenceAtOffset', () => {
     expect(occurrenceAtOffset(items, 5)).toBe(3)
     expect(occurrenceAtOffset(items, 3)).toBeNull()
   })
+
+  it('covers every glyph of an in-flow @label chip', () => {
+    const items = [{ occurrenceId: 1, offset: 0, length: '@dsh-better-sidebar'.length }]
+    expect(occurrenceAtOffset(items, 0)).toBe(1)
+    expect(occurrenceAtOffset(items, 10)).toBe(1)
+    expect(occurrenceAtOffset(items, '@dsh-better-sidebar'.length)).toBe(1)
+    expect(occurrenceAtOffset(items, '@dsh-better-sidebar'.length + 1)).toBeNull()
+  })
 })
 
 describe('caretAfterChip', () => {
@@ -155,6 +166,31 @@ describe('caretAfterChip', () => {
     expect(draftAfterChipDelete('\uFFFC    more', 5, 'backward')).toEqual({ draft: 'more', caret: 0 })
     expect(draftAfterChipDelete('hi \uFFFC    x', 3, 'forward')).toEqual({ draft: 'hi x', caret: 3 })
     expect(draftAfterChipDelete('hello', 5, 'backward')).toBeNull()
+  })
+
+  it('treats the current host @label draft as one chip, not a one-glyph slot', () => {
+    const draft = '@dsh-better-sidebar '
+    const length = '@dsh-better-sidebar'.length
+    expect(chipHasNoUserText(draft, 0, length)).toBe(true)
+    expect(chipHasNoUserText('@dsh-better-sidebar 123', 0, length)).toBe(false)
+    expect(padSpacesAfterObject(draft, 0, 4, length)).toBe('@dsh-better-sidebar    ')
+    expect(caretAfterChip(draft, 0, length)).toBe(draft.length)
+    expect(caretHitsChip(draft, 3, length)).toBe(true)
+    expect(caretHitsChip(draft, draft.length, length)).toBe(true)
+    expect(draftAfterChipDelete(draft, draft.length, 'backward', length)).toEqual({ draft: '', caret: 0 })
+    expect(caretAfterChip(`xx ${draft}`, 5, length)).toBe(`xx ${draft}`.length)
+    expect(draftAfterChipDelete('hi @dsh-better-sidebar ', 5, 'forward', length)).toEqual({ draft: 'hi ', caret: 3 })
+  })
+})
+
+describe('composer chip CSS', () => {
+  it('does not shrink the in-flow @label pill with scale or border-box max-content', () => {
+    const css = readFileSync(resolve(fileURLToPath(new URL('..', import.meta.url)), 'src/client/layout.css'), 'utf8')
+    const chip = css.slice(css.indexOf('[data-decoration="chip"]'))
+    expect(chip).not.toMatch(/scale\(0\.72\)/)
+    expect(chip).not.toMatch(/translateY\(-50%\)/)
+    expect(chip).not.toMatch(/width:\s*max-content/)
+    expect(chip).not.toMatch(/box-sizing:\s*border-box/)
   })
 })
 

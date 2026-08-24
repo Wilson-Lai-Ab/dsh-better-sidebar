@@ -157,6 +157,7 @@ or re-run the one-click script; or bump the version in `~/.dsh/profiles/web/pack
 | Two sidebars on the page | Double-mount: `~/.dsh/profiles/web/cordis.patch.yml` still has the old hand-written `- insert: ... better-sidebar ...` line — delete it (the one-click script cleans it). |
 | Terminal fails on Windows | `node-pty` relies on prebuilt binaries; if none match your Node version, install a build toolchain (VS Build Tools). Mainstream Node versions are usually covered. |
 | No bash / curl on Windows | Use the PowerShell one-click command, or install Git Bash / WSL and run the bash commands. |
+| Sidebar still looks old after a `dsh-idea-style` / `github:` install | Git installs do not run local `tsdown`. This repo ships `lib/`. Update the aggregator, restart dsh web, and hard-refresh. |
 
 </details>
 

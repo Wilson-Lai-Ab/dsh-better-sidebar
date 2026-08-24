@@ -340,6 +340,8 @@ export interface SidebarSessionInput {
         source: string
         ref: string
         offset: number
+        /** Draft glyph count (U+FFFC = 1; current host = `@label`.length). */
+        length?: number
         label: string
         clipboardText?: string
       }[]
@@ -348,8 +350,9 @@ export interface SidebarSessionInput {
   /** Replace the draft text (the input machine's single public write path). */
   setDraft(text: string): void
   /**
-   * Mint a reference chip (U+FFFC + occurrence). Optional: older DSH
-   * facades only expose setDraft — callers fall back to plain text.
+   * Mint a reference chip (`@label` on current DSH, U+FFFC on older
+   * hosts). Optional: older DSH facades only expose setDraft — callers
+   * fall back to plain text.
    */
   insertReference?(ref: {
     source: string

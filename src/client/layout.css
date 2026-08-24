@@ -139,31 +139,23 @@ body[data-dsh-sidebar-dragging] #root > div[data-slot="root"] > div > div:nth-ch
 
 /* File chips in the composer: the backdrop is pointer-events:none, but the
    click interceptor still treats them as links — show the pointer.
-   The host sizes a chip to one U+FFFC (~4em) and center-crops the 0.72
-   label. Paint the pill on the label itself (left-aligned, full name +
-   lines). composer-chip-layout.ts then pads the chip's inline box so the
-   next chip starts after this overflow instead of stacking on it. */
+   Current DSH writes `@label` in-flow (one chip = the full token). Paint the
+   pill on the chip itself so layout width stays the draft text — extra
+   padding / scale(0.72) / max-content on the inner span made the last glyph
+   overflow the host backdrop (`overflow:hidden`) and look like a missing
+   character. */
 [data-composer-card] [data-decoration="chip"] {
   cursor: pointer;
-  background: transparent !important;
+  background: #6187d838 !important;
+  border-radius: 6px;
 }
 
 [data-composer-card] [data-decoration="chip"] > span {
-  left: 0 !important;
-  width: max-content !important;
-  max-width: none !important;
-  justify-content: flex-start !important;
   overflow: visible !important;
-  transform: translateY(-50%) scale(0.72) !important;
-  transform-origin: left center !important;
-  box-sizing: border-box;
-  padding: 0 8px;
-  border-radius: 6px;
-  background: #6187d838;
 }
 
-[data-composer-card] [data-decoration="chip"][data-invalid] > span {
-  background: #d8616133;
+[data-composer-card] [data-decoration="chip"][data-invalid] {
+  background: #d8616133 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
