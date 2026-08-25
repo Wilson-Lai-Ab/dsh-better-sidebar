@@ -604,6 +604,45 @@ describe('service.openTab auto-expand for content opens', () => {
     expect(state.centerTabs.some(t => t.type === 'editor')).toBe(true)
   })
 
+  it('a hidden plugin preview (change review) lands on the conversation header, not the sidebar', () => {
+    const store = createSidebarStore()
+    const service = createBetterSidebarService(store)
+    service.registerTab({
+      id: 'dsh-local-history:change',
+      title: 'Change',
+      hidden: true,
+      component: () => null,
+    })
+    store.setSession('s1')
+    collapseRightPanel(store)
+    service.openTab({
+      type: 'dsh-local-history:change',
+      title: 'BoardView.tsx',
+      path: '/p/BoardView.tsx',
+      id: 'dsh-local-history:change:rec-1',
+    })
+    const state = store.getSnapshot().state!
+    expect(state.panelOpen).toBe(false)
+    expect(state.centerTabs.some(t => t.type === 'dsh-local-history:change')).toBe(true)
+    expect(allLeaves(state.splits).flatMap(l => l.tabs).some(t => t.type === 'dsh-local-history:change')).toBe(false)
+  })
+
+  it('a hidden git-log tab still lands in the sidebar, not the conversation header', () => {
+    const store = createSidebarStore()
+    const service = createBetterSidebarService(store)
+    service.registerTab({
+      id: 'git-log',
+      title: 'History',
+      hidden: true,
+      component: () => null,
+    })
+    store.setSession('s1')
+    service.openTab({ type: 'git-log', title: 'History', id: 'git-log:repo' })
+    const state = store.getSnapshot().state!
+    expect(state.centerTabs.some(t => t.type === 'git-log')).toBe(false)
+    expect(allLeaves(state.splits).concat(allLeaves(state.bottomSplits)).flatMap(l => l.tabs).some(t => t.type === 'git-log')).toBe(true)
+  })
+
   it('expands the collapsed right panel for a URL (browser) open on a wide viewport', () => {
     const store = createSidebarStore()
     const service = createBetterSidebarService(store)

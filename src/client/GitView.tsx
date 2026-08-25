@@ -32,6 +32,25 @@ function readGroupBy(): GitGroupBy {
   return 'module'
 }
 
+/**
+ * Opening a diff splits the git pane (leaf → split). React remounts GitView
+ * and would otherwise drop the nested-repo selection + change list. Keep the
+ * last snapshot for this session so the remount paints immediately.
+ */
+interface GitViewSnapshot {
+  repos: GitRepoInfo[]
+  repoRoot: string | undefined
+  status: GitStatusResult | null
+  branchNames: string[]
+  commitMsg: string
+}
+
+const snapshots = new Map<string, GitViewSnapshot>()
+
+function snapshotKey(scope: SessionScope): string {
+  return `${scope.sessionId}\0${scope.cwd ?? ''}`
+}
+
 /** The badge's class list (base badge + its status color). */
 function badgeClassName(entry: GitStatusEntry): string {
   return [css.gitBadge, classOfKind(kindOfEntry(entry))].filter(Boolean).join(' ')
@@ -88,14 +107,15 @@ export function GitView(props: {
   onOpenDiff: (tab: SidebarTab) => void
 }) {
   const { scope, store, onOpenFile, onOpenDiff } = props
-  const [status, setStatus] = useState<GitStatusResult | null>(null)
-  const [repos, setRepos] = useState<GitRepoInfo[]>([])
-  const [repoRoot, setRepoRoot] = useState<string | undefined>(undefined)
+  const cached = snapshots.get(snapshotKey(scope))
+  const [status, setStatus] = useState<GitStatusResult | null>(cached?.status ?? null)
+  const [repos, setRepos] = useState<GitRepoInfo[]>(cached?.repos ?? [])
+  const [repoRoot, setRepoRoot] = useState<string | undefined>(cached?.repoRoot)
   const [groupBy, setGroupBy] = useState<GitGroupBy>(readGroupBy)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(cached === undefined)
   const [error, setError] = useState<string | null>(null)
-  const [branchNames, setBranchNames] = useState<string[]>([])
-  const [commitMsg, setCommitMsg] = useState('')
+  const [branchNames, setBranchNames] = useState<string[]>(cached?.branchNames ?? [])
+  const [commitMsg, setCommitMsg] = useState(cached?.commitMsg ?? '')
   const [busy, setBusy] = useState(false)
   const [commitError, setCommitError] = useState<string | null>(null)
 
@@ -105,6 +125,9 @@ export function GitView(props: {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   /** The multi-repo picker modal (a workspace with several git roots). */
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
+  /** Branch / group-by menus portal out of the overflow-clipped panel. */
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false)
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false)
 
   /** IDEA-style three-way split: staged (index X), modified (worktree Y on a
    *  tracked file), untracked (`??`). A file with both index and worktree
@@ -116,25 +139,40 @@ export function GitView(props: {
 
   const gitScope: SessionScope = { ...scope, repo: repoRoot }
 
+  useEffect(() => {
+    snapshots.set(snapshotKey(scope), { repos, repoRoot, status, branchNames, commitMsg })
+  }, [scope.sessionId, scope.cwd, repos, repoRoot, status, branchNames, commitMsg])
+
   const refresh = useCallback(async (nextRepo?: string): Promise<void> => {
-    setLoading(true)
+    const key = snapshotKey(scope)
+    const keep = snapshots.get(key)
+    // A remount / background refresh must not blank the list; switching repo
+    // still shows the loading placeholder.
+    if (keep === undefined || nextRepo !== undefined) setLoading(true)
     setError(null)
     try {
       const listed = await api.gitRepos(scope).catch(() => ({ repos: [] as GitRepoInfo[] }))
-      setRepos(listed.repos)
-      const preferred = nextRepo ?? repoRoot
+      const preferred = nextRepo ?? keep?.repoRoot ?? repoRoot
       const selected = preferred !== undefined && listed.repos.some(repo => repo.root === preferred)
         ? preferred
         : listed.repos[0]?.root
-      setRepoRoot(selected)
       const active: SessionScope = { ...scope, repo: selected }
       const [statusResult, branchResult] = await Promise.all([
         api.gitStatus(active),
         api.gitBranch(active).catch(() => ({ current: '', names: [] as string[] })),
       ])
+      const root = statusResult.root ?? selected
+      setRepos(listed.repos)
+      setRepoRoot(root)
       setStatus(statusResult)
-      if (statusResult.root !== undefined) setRepoRoot(statusResult.root)
       setBranchNames(branchResult.names)
+      snapshots.set(key, {
+        repos: listed.repos,
+        repoRoot: root,
+        status: statusResult,
+        branchNames: branchResult.names,
+        commitMsg: snapshots.get(key)?.commitMsg ?? keep?.commitMsg ?? '',
+      })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
@@ -287,6 +325,13 @@ export function GitView(props: {
   const stagedTree = useMemo(() => buildPathTree(stagedEntries), [stagedEntries])
   const modifiedTree = useMemo(() => buildPathTree(modifiedEntries), [modifiedEntries])
   const untrackedTree = useMemo(() => buildPathTree(untrackedEntries), [untrackedEntries])
+  const branchItems = useMemo(() => {
+    const current = status?.branch
+    const names = current !== undefined && current !== '' && !branchNames.includes(current)
+      ? [current, ...branchNames]
+      : branchNames
+    return names.map(name => ({ id: name, label: name }))
+  }, [status?.branch, branchNames])
 
   const renderEntry = (entry: GitStatusEntry, staged: boolean, name = displayNameOf(entry.path, groupBy)): ReactNode => {
     return (
@@ -324,39 +369,96 @@ export function GitView(props: {
     <div className={css.git}>
       <div className={css.gitHeader}>
         {repos.length > 1 && (
-          <button
-            type="button"
-            className={css.gitBranchSelect}
-            aria-label={t('gitRepo')}
-            title={t('gitRepo')}
-            onClick={() => { setRepoPickerOpen(true) }}
-            disabled={busy}
-          >
-            {repos.find(repo => repo.root === repoRoot)?.rel === '.'
-              ? repos.find(repo => repo.root === repoRoot)?.name
-              : `${repos.find(repo => repo.root === repoRoot)?.name ?? ''} (${repos.find(repo => repo.root === repoRoot)?.rel ?? ''})`}
-          </button>
+          <Menu
+            className={css.gitPicker}
+            open={repoPickerOpen}
+            onClose={() => { setRepoPickerOpen(false) }}
+            portal
+            align="start"
+            selectedId={repoRoot}
+            items={repos.map(repo => ({
+              id: repo.root,
+              label: repo.rel === '.' ? repo.name : `${repo.name} (${repo.rel})`,
+            }))}
+            onSelect={(id) => {
+              setRepoPickerOpen(false)
+              void refresh(id)
+            }}
+            anchor={(
+              <button
+                type="button"
+                className={css.gitBranchSelect}
+                aria-label={t('gitRepo')}
+                title={t('gitRepo')}
+                aria-haspopup="menu"
+                aria-expanded={repoPickerOpen}
+                disabled={busy}
+                onClick={() => { setRepoPickerOpen(open => !open) }}
+              >
+                {repos.find(repo => repo.root === repoRoot)?.rel === '.'
+                  ? repos.find(repo => repo.root === repoRoot)?.name
+                  : `${repos.find(repo => repo.root === repoRoot)?.name ?? ''} (${repos.find(repo => repo.root === repoRoot)?.rel ?? ''})`}
+              </button>
+            )}
+          />
         )}
-        <select
-          className={css.gitBranchSelect}
-          value={status?.branch ?? ''}
-          onChange={(event) => { void checkout(event.target.value) }}
-          disabled={busy || (status !== null && !status.isRepo)}
-        >
-          {(status?.branch ?? '') !== '' && <option value={status!.branch}>{status!.branch}</option>}
-          {branchNames.filter(name => name !== status?.branch).map(name => <option key={name} value={name}>{name}</option>)}
-        </select>
-        <select
-          className={css.gitGroupSelect}
-          aria-label={t('groupBy')}
-          title={t('groupBy')}
-          value={groupBy}
-          onChange={(event) => { changeGroupBy(event.target.value as GitGroupBy) }}
-        >
-          <option value="none">{t('groupByNone')}</option>
-          <option value="directory">{t('groupByDirectory')}</option>
-          <option value="module">{t('groupByModule')}</option>
-        </select>
+        <Menu
+          className={css.gitPicker}
+          open={branchMenuOpen}
+          onClose={() => { setBranchMenuOpen(false) }}
+          portal
+          align="start"
+          selectedId={status?.branch}
+          items={branchItems}
+          onSelect={(id) => {
+            setBranchMenuOpen(false)
+            void checkout(id)
+          }}
+          anchor={(
+            <button
+              type="button"
+              className={css.gitBranchSelect}
+              aria-label={t('branch')}
+              title={t('branch')}
+              aria-haspopup="menu"
+              aria-expanded={branchMenuOpen}
+              disabled={busy || (status !== null && !status.isRepo)}
+              onClick={() => { setBranchMenuOpen(open => !open) }}
+            >
+              {status?.branch ?? t('branch')}
+            </button>
+          )}
+        />
+        <Menu
+          className={css.gitGroupPicker}
+          open={groupMenuOpen}
+          onClose={() => { setGroupMenuOpen(false) }}
+          portal
+          align="start"
+          selectedId={groupBy}
+          items={[
+            { id: 'none', label: t('groupByNone') },
+            { id: 'directory', label: t('groupByDirectory') },
+            { id: 'module', label: t('groupByModule') },
+          ]}
+          onSelect={(id) => {
+            setGroupMenuOpen(false)
+            changeGroupBy(id as GitGroupBy)
+          }}
+          anchor={(
+            <button
+              type="button"
+              className={css.gitGroupSelect}
+              aria-label={t('groupBy')}
+              title={t('groupBy')}
+              aria-haspopup="menu"
+              aria-expanded={groupMenuOpen}
+              onClick={() => { setGroupMenuOpen(open => !open) }}
+            >
+              {groupBy === 'none' ? t('groupByNone') : groupBy === 'directory' ? t('groupByDirectory') : t('groupByModule')}
+            </button>
+          )}
+        />
         <button
           type="button"
           className={css.gitLink}
@@ -542,37 +644,9 @@ export function GitView(props: {
           >
             <p className={css.gitConfirmDesc}>{confirm?.description}</p>
           </Modal>
-
-          {/* Multi-repo picker: a workspace holding several git roots shows a
-              modal list instead of a cramped inline select. Choosing one
-              refreshes the status/branch for that root. */}
-          <Modal
-            open={repoPickerOpen}
-            onClose={() => { setRepoPickerOpen(false) }}
-            title={t('gitRepo')}
-            closeLabel={t('cancel')}
-          >
-            <div className={css.gitRepoList} role="listbox" aria-label={t('gitRepo')}>
-              {repos.map(repo => (
-                <button
-                  key={repo.root}
-                  type="button"
-                  role="option"
-                  aria-selected={repo.root === repoRoot}
-                  className={css.gitRepoItem}
-                  onClick={() => {
-                    setRepoPickerOpen(false)
-                    void refresh(repo.root)
-                  }}
-                >
-                  <span className={css.gitRepoName}>{repo.name}</span>
-                  {repo.rel !== '.' && <span className={css.gitRepoRel}>{repo.rel}</span>}
-                </button>
-              ))}
-            </div>
-          </Modal>
         </>
       )}
+
     </div>
   )
 }

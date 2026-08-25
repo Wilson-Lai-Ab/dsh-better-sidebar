@@ -143,6 +143,12 @@ export interface SidebarPrefs {
    */
   reviewDoneSessionLimit: number
   /**
+   * Whether the CodeMirror file editor shows a VS Code-style minimap on
+   * the right. On by default; the code viewer's Side card settings row
+   * can turn it off. Markdown / HTML source editing share this flag.
+   */
+  editorMinimap: boolean
+  /**
    * Per-tab enable switches, keyed by tab descriptor id (`'explorer'`,
    * `'my-plugin:db'`). An ABSENT key means enabled — only an explicit
    * `false` disables a tab type (hidden from the + menu, `openTab` refuses,
@@ -217,6 +223,7 @@ export const SIDEBAR_PREFS_DEFAULTS: SidebarPrefs = {
   centerTabOverflow: 'scroll',
   centerTabMax: CENTER_TAB_MAX_DEFAULT,
   reviewDoneSessionLimit: REVIEW_DONE_SESSIONS_DEFAULT,
+  editorMinimap: true,
   tabsEnabled: {},
   viewersEnabled: {},
   pluginSettings: {},

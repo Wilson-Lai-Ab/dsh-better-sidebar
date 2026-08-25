@@ -107,6 +107,13 @@ export function builtinViewers(): readonly FileViewerDescriptor[] {
       exts: [],
       priority: -100,
       fetchStrategy: 'fsRead',
+      settings: {
+        toggles: [{
+          key: 'editorMinimap',
+          title: () => t('settingsEditorMinimapTitle'),
+          desc: () => t('settingsEditorMinimapDesc'),
+        }],
+      },
       component: (props) => <LazyTextEditor {...props} />,
     },
     {

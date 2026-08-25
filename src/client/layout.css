@@ -97,6 +97,7 @@ body[data-dsh-sidebar-collapsed] [data-slot="conversation.session.header"] > hea
 
 body[data-dsh-center-tabs-wrap] [data-slot="conversation.session.header"] [role="tablist"] {
   flex-wrap: wrap;
+  height: auto;
   overflow-x: hidden;
   overflow-y: visible;
   row-gap: 6px;
@@ -110,6 +111,7 @@ body[data-dsh-center-tabs-wrap] [data-slot="conversation.session.header"] [role=
 body[data-dsh-center-tabs-wrap] [data-slot="conversation.session.header"] > header {
   height: auto;
   min-height: 48px;
+  overflow: visible;
   align-items: flex-start;
 }
 

@@ -150,6 +150,14 @@ describe('built-in file viewer registrations', () => {
     expect(toggles[1]?.desc).toBeDefined()
   })
 
+  it('the code viewer declares the editor minimap setting (on by default)', () => {
+    const { service } = setup()
+    const toggles = service.getFileViewers().find(v => v.id === 'code')?.settings?.toggles ?? []
+    expect(toggles.map(t => t.key)).toEqual(['editorMinimap'])
+    expect(toggles[0]?.title).toBeDefined()
+    expect(toggles[0]?.desc).toBeDefined()
+  })
+
   it('binary-download claims legacy office by extension (office previews are not built in)', () => {
     const { service } = setup()
     expect(service.matchFileViewer('old.doc')?.id).toBe('binary-download')

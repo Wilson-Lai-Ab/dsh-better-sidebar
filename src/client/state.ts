@@ -454,6 +454,20 @@ export function closeTab(state: SidebarState, paneId: string, tabId: string): Si
   return { ...state, [key]: emptied ? removeLeafAt(splits, paneId) : splits }
 }
 
+/** Keep one conversation-header tab; drop the rest. */
+export function closeOtherCenterTabs(state: SidebarState, tabId: string): SidebarState {
+  const keep = state.centerTabs.find(tab => tab.id === tabId)
+  if (keep === undefined) return state
+  if (state.centerTabs.length === 1) return { ...state, centerActive: tabId }
+  return { ...state, centerTabs: [keep], centerActive: tabId }
+}
+
+/** Close every conversation-header tab and hide the overlay. */
+export function closeAllCenterTabs(state: SidebarState): SidebarState {
+  if (state.centerTabs.length === 0 && state.centerActive === null) return state
+  return { ...state, centerTabs: [], centerActive: null }
+}
+
 /** Activate a tab in its pane (the pane's own tree). */
 export function activateTab(state: SidebarState, paneId: string, tabId: string): SidebarState {
   if (paneId === CENTER_PANE_ID) {

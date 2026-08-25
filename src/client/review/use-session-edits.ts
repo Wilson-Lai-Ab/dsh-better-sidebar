@@ -20,15 +20,17 @@ export function useSessionEdits(ctx: Context, sessionId: string | undefined, cwd
   loadingOlder: boolean
   loadOlder: () => Promise<void>
 } {
-  const binding = sessionId === undefined ? undefined : ctx.sessions.binding?.(sessionId)
+  const binding = sessionId === undefined ? undefined : ctx.sessions?.binding?.(sessionId)
   const session = binding?.session
+  const readSnap = useCallback(() => session?.getSnapshot() ?? emptySnap, [session])
   const snapshot = useSyncExternalStore(
     useCallback((listener) => session?.subscribe(listener) ?? (() => {}), [session]),
-    useCallback(() => session?.getSnapshot() ?? emptySnap, [session]),
+    readSnap,
+    readSnap,
   )
   const edits = useMemo(() => collectSessionEdits(snapshot.nodes ?? empty, cwd), [snapshot.nodes, cwd])
   const latest = useMemo(() => latestSessionEdits(edits), [edits])
-  const tick = useSyncExternalStore(subscribeReview, reviewRevision)
+  const tick = useSyncExternalStore(subscribeReview, reviewRevision, reviewRevision)
   const pending = sessionId === undefined ? 0 : pendingCount(sessionId, latest)
   void tick
   useEffect(() => {

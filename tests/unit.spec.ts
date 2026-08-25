@@ -1229,6 +1229,14 @@ describe('side card preferences', () => {
       .toBe(false)
   })
 
+  it('defaults editorMinimap to true; only an explicit false hides the code minimap', async () => {
+    expect((await loadPrefs(wire({}))).editorMinimap).toBe(true)
+    expect((await loadPrefs(wire({ editorMinimap: 'yes' }))).editorMinimap).toBe(true)
+    expect((await loadPrefs(wire({ editorMinimap: 0 }))).editorMinimap).toBe(true)
+    expect((await loadPrefs(wire({ editorMinimap: false }))).editorMinimap).toBe(false)
+    expect((await loadPrefs(wire({ editorMinimap: true }))).editorMinimap).toBe(true)
+  })
+
   it('defaults interceptOpenPath to true; only an explicit false turns the takeover off', async () => {
     // Absent or malformed → on (the takeover is the safe default).
     expect((await loadPrefs(wire({}))).interceptOpenPath).toBe(true)
@@ -1311,9 +1319,9 @@ describe('side card preferences', () => {
     const store = createSidebarStore()
     // Node environment: no window → the width falls back to PANEL_DEFAULT,
     // while the open flag still follows the preference.
-    store.setPrefs({ openByDefault: false, defaultWidthPercent: 45, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+    store.setPrefs({ ...SIDEBAR_PREFS_DEFAULTS, openByDefault: false, defaultWidthPercent: 45 })
     store.setSession('fresh-session')
-    expect(store.getPrefs()).toEqual({ openByDefault: false, defaultWidthPercent: 45, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+    expect(store.getPrefs()).toEqual({ ...SIDEBAR_PREFS_DEFAULTS, openByDefault: false, defaultWidthPercent: 45 })
     const snapshot = store.getSnapshot()
     expect(snapshot.sessionId).toBe('fresh-session')
     expect(snapshot.state?.panelOpen).toBe(false)
@@ -1349,7 +1357,7 @@ describe('side card preferences', () => {
 
   it('skips the default explorer tab when the explorer type is disabled', () => {
     const store = createSidebarStore()
-    store.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, tabsEnabled: { explorer: false }, viewersEnabled: {}, pluginSettings: {} })
+    store.setPrefs({ ...SIDEBAR_PREFS_DEFAULTS, tabsEnabled: { explorer: false } })
     store.setSession('no-explorer')
     const state = store.getSnapshot().state!
     const tabs = allLeaves(state.splits).flatMap(leaf => leaf.tabs)
@@ -1357,7 +1365,7 @@ describe('side card preferences', () => {
     expect(state.splits.kind).toBe('leaf')
     // Re-enabling seeds the explorer tab again.
     const openStore = createSidebarStore()
-    openStore.setPrefs({ openByDefault: true, defaultWidthPercent: 30, autoOpenSubagent: true, autoOpenJobs: true, agentTerminalTools: false, bottomPanelAutoTerminal: true, terminalFontFamily: '', terminalFontSize: 13, interceptOpenPath: true, titleBarCompat: false, titleBarStripPx: 40, htmlViewerNoSandbox: false, htmlViewerDefaultUnsafe: false, browserNoSandbox: false, browserInterceptLinks: true, browserInterceptHttp: true, browserInterceptHttps: false, tabsEnabled: {}, viewersEnabled: {}, pluginSettings: {} })
+    openStore.setPrefs({ ...SIDEBAR_PREFS_DEFAULTS })
     openStore.setSession('with-explorer')
     const openTabs = allLeaves(openStore.getSnapshot().state!.splits).flatMap(leaf => leaf.tabs)
     expect(openTabs.map(tab => tab.type)).toEqual(['explorer'])

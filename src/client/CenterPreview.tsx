@@ -7,11 +7,12 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
+import { Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../context-types.ts'
 import { TabContent } from './tab-content.tsx'
 import { editorTabForPath } from './intercept.tsx'
 import {
-  CENTER_PANE_ID, openDiffTab, promoteCenterTabToEditor, toggleExpanded,
+  CENTER_PANE_ID, closeAllCenterTabs, closeOtherCenterTabs, openDiffTab, promoteCenterTabToEditor, toggleExpanded,
   type SidebarState, type SidebarStore, type SidebarTab,
 } from './state.ts'
 import { classOfKind, latestGitKinds, workspacePathOfTab } from './git-status-style.ts'
@@ -25,7 +26,13 @@ import css from './sidebar.module.css'
  * Trajectory hides the overlay; clicking a docked file tab shows it.
  * Must stay mounted even while the overlay is hidden.
  */
-export function useHostHeaderTabSync(ctx: Context, store: SidebarStore): void {
+export type CenterTabMenu = { tabId: string; x: number; y: number }
+
+export function useHostHeaderTabSync(
+  ctx: Context,
+  store: SidebarStore,
+  onTabMenu: (menu: CenterTabMenu) => void,
+): void {
   useEffect(() => {
     let header: HTMLElement | undefined
     const tabOf = (button: HTMLElement): SidebarTab | undefined => {
@@ -182,6 +189,18 @@ export function useHostHeaderTabSync(ctx: Context, store: SidebarStore): void {
       if (!(button instanceof HTMLElement) || !header.contains(button)) return
       applyFrom(button)
     }
+    const onContextMenu = (event: Event): void => {
+      if (header === undefined) return
+      const mouse = event as MouseEvent
+      const button = (event.target instanceof Element ? event.target : null)?.closest('[role="tab"]')
+      if (!(button instanceof HTMLElement) || !header.contains(button)) return
+      const tab = tabOf(button)
+      if (tab === undefined) return
+      event.preventDefault()
+      event.stopPropagation()
+      store.reduce(s => (s.centerActive === tab.id ? s : { ...s, centerActive: tab.id }))
+      onTabMenu({ tabId: tab.id, x: mouse.clientX, y: mouse.clientY })
+    }
     const onDblClick = (event: Event): void => {
       if (header === undefined) return
       if (event.target instanceof Element && event.target.closest('[data-dsh-center-close]') !== null) return
@@ -199,9 +218,11 @@ export function useHostHeaderTabSync(ctx: Context, store: SidebarStore): void {
       if (header !== found) {
         header?.removeEventListener('click', onClick)
         header?.removeEventListener('dblclick', onDblClick)
+        header?.removeEventListener('contextmenu', onContextMenu)
         header = found
         header.addEventListener('click', onClick)
         header.addEventListener('dblclick', onDblClick)
+        header.addEventListener('contextmenu', onContextMenu)
       }
       decorate()
     }
@@ -219,8 +240,9 @@ export function useHostHeaderTabSync(ctx: Context, store: SidebarStore): void {
       window.removeEventListener('resize', onResize)
       header?.removeEventListener('click', onClick)
       header?.removeEventListener('dblclick', onDblClick)
+      header?.removeEventListener('contextmenu', onContextMenu)
     }
-  }, [ctx, store])
+  }, [ctx, store, onTabMenu])
 }
 
 /**
@@ -250,6 +272,45 @@ function useHostHeaderTablistPresent(): boolean {
   return present
 }
 
+export function CenterTabContextMenu(props: {
+  ctx: Context
+  store: SidebarStore
+  sessionId: string | undefined
+  menu: CenterTabMenu | null
+  onClose: () => void
+}): ReactNode {
+  const { ctx, store, sessionId, menu, onClose } = props
+  return (
+    <Menu
+      open={menu !== null}
+      onClose={onClose}
+      items={[
+        { id: 'close', label: t('close') },
+        { id: 'closeOthers', label: t('closeOthers') },
+        { id: 'closeAll', label: t('closeAll') },
+      ]}
+      onSelect={(id) => {
+        const target = menu
+        onClose()
+        if (target === null) return
+        if (id === 'close') {
+          ctx.betterSidebar?.closeTab(target.tabId, sessionId === undefined ? undefined : { sessionId })
+          return
+        }
+        if (id === 'closeOthers') {
+          store.reduce(s => closeOtherCenterTabs(s, target.tabId))
+          return
+        }
+        if (id === 'closeAll') store.reduce(s => closeAllCenterTabs(s))
+      }}
+      portal
+      align="start"
+      getAnchorRect={() => (menu === null ? null : new DOMRect(menu.x, menu.y, 0, 0))}
+      anchor={<span />}
+    />
+  )
+}
+
 export function CenterPreview(props: {
   ctx: Context
   store: SidebarStore
@@ -261,8 +322,9 @@ export function CenterPreview(props: {
   top: number
   bottom: number
   onReferenceFile: (path: string) => void
+  onTabMenu: (menu: CenterTabMenu) => void
 }): ReactNode {
-  const { ctx, store, state, sessionId, cwd, left, right, top, bottom, onReferenceFile } = props
+  const { ctx, store, state, sessionId, cwd, left, right, top, bottom, onReferenceFile, onTabMenu } = props
   const hostHeaderPresent = useHostHeaderTablistPresent()
   const activeId = state.centerActive
   if (activeId === null || state.centerTabs.length === 0) return null
@@ -299,6 +361,12 @@ export function CenterPreview(props: {
             className={clsx(css.centerPreviewTab, candidate.id === activeId && css.centerPreviewTabActive)}
             title={candidate.title}
             onClick={() => { store.reduce(s => (s.centerActive === candidate.id ? s : { ...s, centerActive: candidate.id })) }}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              store.reduce(s => (s.centerActive === candidate.id ? s : { ...s, centerActive: candidate.id }))
+              onTabMenu({ tabId: candidate.id, x: event.clientX, y: event.clientY })
+            }}
           >
             <span className={css.centerPreviewLabel}>{candidate.title}</span>
             <button

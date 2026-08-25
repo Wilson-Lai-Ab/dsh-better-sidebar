@@ -45,7 +45,8 @@ import { Workbench, type WorkbenchActions } from './split-pane.tsx'
 import { useNarrowViewport } from './breakpoints.ts'
 import { parseDrag, TAB_DRAG_TYPE, type NewTabOption, type TabDragPayload } from './TabBar.tsx'
 import { TabContent } from './tab-content.tsx'
-import { CenterPreview, useHostHeaderTabSync } from './CenterPreview.tsx'
+import { CenterPreview, CenterTabContextMenu, useHostHeaderTabSync, type CenterTabMenu } from './CenterPreview.tsx'
+import { previewOverlayTop } from './preview-overlay.ts'
 import { focusLatestCenterView } from './conversation-views.tsx'
 import { detectNewDirectSubagent } from './subagent-detect.ts'
 import { detectNewJob } from './subagent-jobs.ts'
@@ -340,7 +341,11 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
     if (col === null) return
     const rect = col.getBoundingClientRect()
     const header = document.querySelector('[data-slot="conversation.session.header"] header')
-    const headerBottom = header instanceof HTMLElement ? header.getBoundingClientRect().bottom : 48
+    const tablist = header instanceof HTMLElement ? header.querySelector('[role="tablist"]') : null
+    const headerBottom = previewOverlayTop(
+      header instanceof HTMLElement ? header.getBoundingClientRect() : null,
+      tablist instanceof HTMLElement ? tablist.getBoundingClientRect() : null,
+    )
     // The bottom panel only cares about the horizontal edges: a pure height
     // change (the bottom panel itself opening/closing) must not re-render,
     // so keep the previous object when left/right/header are unchanged.
@@ -380,6 +385,10 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
         observer = new ResizeObserver(measureCenter)
         observer.observe(col)
       }
+      const header = document.querySelector('[data-slot="conversation.session.header"] header')
+      const tablist = header instanceof HTMLElement ? header.querySelector('[role="tablist"]') : null
+      if (header instanceof HTMLElement) observer?.observe(header)
+      if (tablist instanceof HTMLElement) observer?.observe(tablist)
       measureCenter()
     }
     locate()
@@ -435,6 +444,8 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const widthDrag = useRef({ startX: 0, startWidth: 0 })
   const [tabDragOverChat, setTabDragOverChat] = useState(false)
+  const [centerTabMenu, setCenterTabMenu] = useState<CenterTabMenu | null>(null)
+  const openCenterTabMenu = useCallback((menu: CenterTabMenu) => { setCenterTabMenu(menu) }, [])
   const [tabDragOverHeader, setTabDragOverHeader] = useState(false)
   const [draggingWidth, setDraggingWidth] = useState(false)
   const bottomDrag = useRef({ startY: 0, startHeight: 0 })
@@ -442,7 +453,7 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
   const cornerDrag = useRef({ startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const [draggingCorner, setDraggingCorner] = useState(false)
   const anyDragging = draggingWidth || draggingBottom || draggingCorner
-  useHostHeaderTabSync(ctx, store)
+  useHostHeaderTabSync(ctx, store, openCenterTabMenu)
 
   // Pause center-column measurement while dragging, and re-measure once the
   // drag settles at its committed size. The store commit lands on release and
@@ -831,6 +842,14 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
             top={centerRect.headerBottom}
             bottom={state.bottomOpen ? Math.min(state.bottomHeight, window.innerHeight) : 0}
             onReferenceFile={referenceInChat}
+            onTabMenu={openCenterTabMenu}
+          />
+          <CenterTabContextMenu
+            ctx={ctx}
+            store={store}
+            sessionId={sessionId}
+            menu={centerTabMenu}
+            onClose={() => { setCenterTabMenu(null) }}
           />
         </>
       )}

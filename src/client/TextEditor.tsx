@@ -9,11 +9,12 @@
  * The toolbar (mode toggle / dirty dot / save / status) renders as its own
  * row below the host's title bar, VSCode-style.
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
-import { EditorState, StateEffect, StateField, type Text } from '@codemirror/state'
+import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView as CodeMirrorView, keymap, lineNumbers } from '@codemirror/view'
+import { showMinimap } from '@replit/codemirror-minimap'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { IconCheckOutline16, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { api, htmlUrl } from './api.ts'
@@ -115,6 +116,32 @@ interface SelectionPopup {
  */
 export const HTML_IFRAME_SANDBOX = 'allow-scripts allow-popups allow-downloads allow-modals'
 
+/** Keep/Undo bar inset: the live Replit gutter width (max 120, else width/6). */
+export function syncMinimapInset(host: HTMLElement, enabled: boolean): void {
+  if (!enabled) {
+    host.style.setProperty('--dsh-editor-minimap', '0px')
+    return
+  }
+  const gutter = host.querySelector('.cm-minimap-gutter') as HTMLElement | null
+  const width = gutter !== null && gutter.clientWidth > 0
+    ? gutter.clientWidth
+    : Math.min(120, Math.max(0, Math.round(host.clientWidth / 6)))
+  host.style.setProperty('--dsh-editor-minimap', `${width}px`)
+}
+
+function minimapExtensions(enabled: boolean): Extension[] {
+  if (!enabled) return []
+  return [
+    showMinimap.compute(['doc'], () => ({
+      create: () => ({
+        dom: document.createElement('div'),
+      }),
+      displayText: 'characters',
+      showOverlay: 'always',
+    })),
+  ]
+}
+
 export function TextEditor(props: FileViewerProps) {
   const { ctx, scope, path, viewerId, content, truncated } = props
   const [mode, setMode] = useState<ViewMode>('preview')
@@ -127,6 +154,8 @@ export function TextEditor(props: FileViewerProps) {
   const savingRef = useRef(false)
   /** The theme compartment of the current view (reconfigured on scheme flip). */
   const themeCompRef = useRef<CmThemeCompartment | null>(null)
+  /** Minimap on/off without recreating the document (Side card pref). */
+  const minimapCompRef = useRef<Compartment | null>(null)
   /** The app's resolved color scheme; the editor re-themes in place on flips. */
   const [dark, setDark] = useState(() => isDarkScheme())
   /** The floating "add to conversation" popup (viewport-anchored; null = hidden). */
@@ -140,7 +169,7 @@ export function TextEditor(props: FileViewerProps) {
   const [hunks, setHunks] = useState<readonly ReviewHunk[]>([])
   const [hunkHover, setHunkHover] = useState<{ hunk: ReviewHunk; top: number } | null>(null)
   const [hunkTick, setHunkTick] = useState(0)
-  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision)
+  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision, reviewRevision)
   const { latest } = useSessionEdits(ctx, scope.sessionId, scope.cwd)
   const absPath = resolveSidebarPath(scope.cwd, path)
   const sessionEdit = latest.find(edit => edit.path === absPath || edit.path === path)
@@ -234,6 +263,9 @@ export function TextEditor(props: FileViewerProps) {
     const language = languageForPath(path)
     const themeComp = new CmThemeCompartment()
     themeCompRef.current = themeComp
+    const minimapComp = new Compartment()
+    minimapCompRef.current = minimapComp
+    const minimapOn = props.store?.getPrefs().editorMinimap !== false
     const state = EditorState.create({
       doc: content,
       extensions: [
@@ -247,6 +279,7 @@ export function TextEditor(props: FileViewerProps) {
         revealMarkField,
         cmSurfaceTheme,
         themeComp.of(dark),
+        minimapComp.of(minimapExtensions(minimapOn)),
         ...(language !== null ? [language] : []),
         CodeMirrorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -332,6 +365,7 @@ export function TextEditor(props: FileViewerProps) {
       view.destroy()
       viewRef.current = null
       themeCompRef.current = null
+      minimapCompRef.current = null
     }
     // The keymap's save() reads live refs; scope/path are stable for a
     // tab's lifetime, and the dark flip is handled by the reconfigure
@@ -461,6 +495,34 @@ export function TextEditor(props: FileViewerProps) {
     if (view === null || themeComp === null) return
     view.dispatch({ effects: themeComp.reconfigure(dark) })
   }, [dark])
+
+  // Side card "show minimap" toggle: reconfigure in place so undo/scroll
+  // survive. The CSS var keeps the Keep/Undo hunk bar off the thumbnail.
+  const readMinimapOn = useCallback(
+    () => props.store?.getPrefs().editorMinimap !== false,
+    [props.store],
+  )
+  const minimapOn = useSyncExternalStore(
+    useCallback((listener: () => void) => props.store?.subscribe(listener) ?? (() => {}), [props.store]),
+    readMinimapOn,
+    readMinimapOn,
+  )
+  useEffect(() => {
+    const view = viewRef.current
+    const minimapComp = minimapCompRef.current
+    if (view !== null && minimapComp !== null) {
+      view.dispatch({ effects: minimapComp.reconfigure(minimapExtensions(minimapOn)) })
+    }
+    const host = hostRef.current
+    if (host === null) return
+    const apply = (): void => { syncMinimapInset(host, minimapOn) }
+    apply()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(apply)
+    observer?.observe(host)
+    const gutter = host.querySelector('.cm-minimap-gutter')
+    if (gutter instanceof HTMLElement) observer?.observe(gutter)
+    return () => { observer?.disconnect() }
+  }, [minimapOn])
 
   // The editor may have been display:none while previewing; re-measure when
   // it becomes visible again (CodeMirror sizes itself on reveal). A mode

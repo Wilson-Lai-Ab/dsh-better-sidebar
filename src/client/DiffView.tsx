@@ -270,8 +270,7 @@ export function DiffView({ diff, untrackedPath, untrackedContent, ctx, sessionId
           ? <span className={css.gitDiffMetaText}>{line.text}</span>
           : (
             <>
-              <span className={css.gitDiffNum}>{line.oldNum ?? ''}</span>
-              <span className={css.gitDiffNum}>{line.newNum ?? ''}</span>
+              <span className={css.gitDiffNum} data-diff-gutter>{lineNo ?? ''}</span>
               <span className={css.gitDiffCode}>{line.text}</span>
             </>
           )}

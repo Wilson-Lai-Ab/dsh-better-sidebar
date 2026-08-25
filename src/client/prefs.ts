@@ -95,6 +95,9 @@ export function parsePrefs(value: unknown): SidebarPrefs {
     reviewDoneSessionLimit: typeof record.reviewDoneSessionLimit === 'number' && Number.isFinite(record.reviewDoneSessionLimit)
       ? clampReviewDoneSessions(record.reviewDoneSessionLimit)
       : SIDEBAR_PREFS_DEFAULTS.reviewDoneSessionLimit,
+    editorMinimap: typeof record.editorMinimap === 'boolean'
+      ? record.editorMinimap
+      : SIDEBAR_PREFS_DEFAULTS.editorMinimap,
     tabsEnabled: booleanMapOf(record.tabsEnabled),
     viewersEnabled: booleanMapOf(record.viewersEnabled),
     pluginSettings: pluginSettingsMapOf(record.pluginSettings),

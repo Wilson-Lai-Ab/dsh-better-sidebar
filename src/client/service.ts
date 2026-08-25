@@ -783,16 +783,21 @@ function applyDedupe(state: SidebarState, tab: SidebarTab, descriptor: TabDescri
     const existing = state.centerTabs.find(t => t.type === tab.type && dedupeKey!(t) === key)
     if (existing !== undefined) return activateTabReducer(state, CENTER_PANE_ID, existing.id)
   }
-  // File previews (editor / diff) land on the conversation header by default
-  // (not the right sidebar): Explorer / chat intercept / openFile all go
-  // through here. In a FRESH conversation the host has no 对话 / 轨迹 strip,
-  // so CenterPreview paints its own tab strip (a 对话 tab to click back to
-  // the chat + a close button per file) — the preview stays closable either
-  // way.
-  if (tab.type === 'editor' || tab.type === 'diff') {
+  // File previews land on the conversation header by default (not the right
+  // sidebar): Explorer / chat intercept / openFile, plus plugin hidden
+  // preview types such as local-history change review. git-log is also
+  // hidden but is a tool view that belongs in the workbench, not the
+  // conversation strip.
+  if (docksToConversationHeader(tab.type, descriptor)) {
     return dockTabToCenter(state, 'seed', tab.id, tab, prefs.centerTabOverflow, prefs.centerTabMax)
   }
   return openTabInActivePane(state, tab)
+}
+
+function docksToConversationHeader(type: string, descriptor: TabDescriptor): boolean {
+  if (type === 'git-log') return false
+  if (type === 'editor' || type === 'diff') return true
+  return descriptor.hidden === true && descriptor.createTab === undefined
 }
 
 /** Find which pane hosts a tab id ('' if none). Either tree or the center strip. */

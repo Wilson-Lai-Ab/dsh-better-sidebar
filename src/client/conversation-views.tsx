@@ -1,20 +1,17 @@
 /**
  * Dock sidebar tabs onto the conversation header (对话 / 轨迹).
  *
- * Each docked tab is a `conversation.view` list entry. Host chrome owns the
- * tab button; this file owns the body and the drop target over the empty
- * strip next to 对话 / 轨迹.
+ * Each docked tab is a `conversation.view` list entry so the host paints a
+ * tab button. The file body lives in CenterPreview — this file only keeps
+ * the header drop pad and the view-id registry.
  */
-import { useCallback, useEffect, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import type { Context } from '../context-types.ts'
-import { insertFileRef } from './conversation-draft.ts'
-import { fileRefOf } from './file-ref.ts'
-import { TabContent } from './tab-content.tsx'
 import { parseDrag, TAB_DRAG_TYPE } from './TabBar.tsx'
 import { observeHostHeader, scheduleGuardedFrame } from './dom-sync.ts'
 import {
-  CENTER_PANE_ID, dockTabToCenter, openDiffTab, toggleExpanded,
-  type SidebarStore, type SidebarTab,
+  dockTabToCenter,
+  type SidebarStore,
 } from './state.ts'
 import { t } from './locales.ts'
 import css from './sidebar.module.css'
@@ -24,53 +21,6 @@ const DROP_ID = 'dsh-center-drop'
 
 export function centerViewId(tabId: string): string {
   return `${VIEW_PREFIX}${tabId}`
-}
-
-function CenterTabView(props: {
-  tabId: string
-  ctx: Context
-  store: SidebarStore
-  sessionId: string
-}): ReactNode {
-  const { tabId, ctx, store, sessionId } = props
-  const snapshot = useSyncExternalStore(
-    useCallback((listener: () => void) => store.subscribe(listener), [store]),
-    store.getSnapshot,
-  )
-  const state = snapshot.state
-  const tab = state?.centerTabs.find(candidate => candidate.id === tabId)
-  const cwd = snapshot.sessionId === sessionId
-    ? ctx.sessions?.list.getSnapshot().byId[sessionId]?.cwd
-    : undefined
-  const onToggleDir = useCallback((path: string) => {
-    store.reduce(s => toggleExpanded(s, path))
-  }, [store])
-  const onReferenceFile = useCallback((path: string) => {
-    insertFileRef(ctx, sessionId, fileRefOf(path, cwd))
-  }, [ctx, sessionId, cwd])
-  const onOpenDiff = useCallback((diffTab: SidebarTab) => {
-    store.reduce(s => openDiffTab(s, CENTER_PANE_ID, diffTab))
-  }, [store])
-  if (state === undefined || tab === undefined) {
-    return <div className={css.centerView}>{t('loading')}</div>
-  }
-  return (
-    <div className={css.centerView}>
-      <TabContent
-        tab={tab}
-        sessionId={sessionId}
-        cwd={cwd}
-        expanded={state.expanded}
-        onToggleDir={onToggleDir}
-        onReferenceFile={onReferenceFile}
-        ctx={ctx}
-        store={store}
-        visible
-        onSubagentJump={() => { /* session jump stays in the sidebar topology */ }}
-        onOpenDiff={onOpenDiff}
-      />
-    </div>
-  )
 }
 
 /** After a dock, click the matching conversation-view tab so the host strip lights it. */
@@ -190,9 +140,7 @@ export function registerConversationViews(ctx: Context, store: SidebarStore): ()
         order: 100,
         label: () => store.getSnapshot().state?.centerTabs.find(candidate => candidate.id === tabId)?.title ?? tab.title,
         registrant: 'dsh-better-sidebar',
-      }, (props: { sessionId: string }) => (
-        <CenterTabView tabId={tabId} ctx={ctx} store={store} sessionId={props.sessionId} />
-      )))
+      }, () => null))
       disposeById.set(tab.id, dispose)
     }
   }

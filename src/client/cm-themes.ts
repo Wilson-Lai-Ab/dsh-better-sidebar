@@ -32,6 +32,13 @@ export const cmSurfaceTheme = EditorView.theme({
     color: 'var(--dsw-alias-label-tertiary)',
     border: 'none',
   },
+  '.cm-minimap-gutter': {
+    backgroundColor: 'var(--dsw-alias-bg-layer-1)',
+    borderLeft: '1px solid var(--dsw-alias-border-l1)',
+  },
+  '.cm-minimap-overlay': {
+    backgroundColor: 'color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent)',
+  },
 })
 
 /** Scheme-specific surface tints (selection, active line). */

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { SettingsConflictError, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -444,6 +444,71 @@ describe('session cwd resolution over the API route', () => {
     expect(missing.ok).toBe(false)
   })
 
+  it('git.status uses the selected nested repo instead of the session cwd', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-ws-'))
+    const nested = join(workspace, 'dsh-at-file')
+    const identity = {
+      GIT_AUTHOR_NAME: 'dsh-better-sidebar-test',
+      GIT_AUTHOR_EMAIL: 'test@dsh.invalid',
+      GIT_COMMITTER_NAME: 'dsh-better-sidebar-test',
+      GIT_COMMITTER_EMAIL: 'test@dsh.invalid',
+    }
+    const gitRun = (cwd: string, args: string[]): void => {
+      const result = spawnSync('git', ['-C', cwd, '--no-pager', '-c', 'color.ui=false', ...args], {
+        encoding: 'utf8',
+        env: { ...process.env, ...identity },
+      })
+      if (result.status !== 0) {
+        throw new Error(result.stderr || `git ${args[0] ?? ''} exited with ${String(result.status)}`)
+      }
+    }
+    try {
+      mkdirSync(nested)
+      gitRun(nested, ['init', '-q'])
+      gitRun(nested, ['checkout', '-q', '-b', 'main'])
+      writeFileSync(join(nested, 'a.txt'), 'nested\n')
+      gitRun(nested, ['add', '-A'])
+      gitRun(nested, ['commit', '-q', '-m', 'base'])
+      const route = mount({
+        sessions: { get: () => ({ header: { cwd: workspace } }) },
+      })
+      const sessionStatus = await invoke(route, 'git.status', { sessionId: 's-ws' }) as {
+        ok: boolean
+        value?: { isRepo: boolean }
+      }
+      expect(sessionStatus.ok).toBe(true)
+      expect(sessionStatus.value?.isRepo).toBe(false)
+
+      const nestedStatus = await invoke(route, 'git.status', {
+        sessionId: 's-ws',
+        repo: nested,
+      }) as { ok: boolean; value?: { isRepo: boolean; root?: string; branch?: string } }
+      expect(nestedStatus.ok).toBe(true)
+      expect(nestedStatus.value?.isRepo).toBe(true)
+      expect(nestedStatus.value?.branch).toBe('main')
+      expect(realpathSync(nestedStatus.value?.root ?? '')).toBe(realpathSync(nested))
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a repo path outside the session workspace', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-ws-'))
+    const outsider = mkdtempSync(join(tmpdir(), 'dsh-sidebar-out-'))
+    try {
+      spawnSync('git', ['-C', outsider, 'init', '-q'], { encoding: 'utf8' })
+      const route = mount({
+        sessions: { get: () => ({ header: { cwd: workspace } }) },
+      })
+      const result = await invoke(route, 'git.status', { sessionId: 's-ws', repo: outsider })
+      expect(result.ok).toBe(false)
+      expect(result.error?.message).toMatch(/outside the session workspace/)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+      rmSync(outsider, { recursive: true, force: true })
+    }
+  })
+
   it('git.diff resolves repo-relative paths (session in a subdirectory)', async () => {
     // The plugin repo's status paths are relative to the repo top level
     // (e.g. `src/git.ts`); a session whose cwd sits inside the repo must
@@ -583,6 +648,10 @@ describe('side card settings routes', () => {
         browserInterceptLinks: true,
         browserInterceptHttp: true,
         browserInterceptHttps: false,
+        centerTabOverflow: 'scroll',
+        centerTabMax: 20,
+        reviewDoneSessionLimit: 30,
+        editorMinimap: true,
         // The enable-switch maps default to {} (everything on).
         tabsEnabled: {},
         viewersEnabled: {},

@@ -1671,7 +1671,7 @@
 
 .reviewHunkBar {
   position: absolute;
-  right: 10px;
+  right: calc(10px + var(--dsh-editor-minimap, 0px));
   z-index: 6;
   display: flex;
   align-items: center;
@@ -1996,6 +1996,28 @@
   padding: 4px 8px 4px 12px;
 }
 
+/* Menu wraps its trigger in a span; stretch that wrapper so the button
+   still fills the header row. The list itself is portaled to body so
+   overflow:hidden ancestors cannot clip the popup (native <select> could). */
+.gitPicker,
+.gitGroupPicker {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.gitPicker {
+  flex: 1;
+}
+
+.gitGroupPicker {
+  flex: none;
+}
+
+.gitPicker > button,
+.gitGroupPicker > button {
+  width: 100%;
+}
+
 .gitBranchSelect {
   flex: 1;
   min-width: 0;
@@ -2006,8 +2028,8 @@
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xxs-12);
-  /* The repo picker is a <button> now (opens a modal); match the select's
-     compact look and ellipsize the long repo path. */
+  /* Repo / branch pickers are <button>s (modal or portaled Menu); match the
+     old select's compact look and ellipsize the long path/name. */
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2069,6 +2091,11 @@
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-xxs-12);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .gitTreeDir {
@@ -2341,9 +2368,10 @@
   white-space: nowrap;
 }
 
-/* One aligned diff line: old gutter / new gutter / code. Lines WRAP instead
-   of scrolling horizontally (the tab-page rule: fill the width adaptively),
-   with the long-token fallback breaking anywhere a space never comes. */
+/* One aligned diff line: a single surviving-side gutter + code. Lines WRAP
+   instead of scrolling horizontally (the tab-page rule: fill the width
+   adaptively), with the long-token fallback breaking anywhere a space
+   never comes. */
 .gitDiffLine {
   display: flex;
   align-items: stretch;
