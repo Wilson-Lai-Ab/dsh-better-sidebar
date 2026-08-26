@@ -17,7 +17,7 @@ import { parseLogLines, parsePorcelainZ } from '../src/git.ts'
 import { parseUnifiedDiff } from '../src/client/DiffView.tsx'
 import {
   activateTab, allLeaves, BOTTOM_DEFAULT, BOTTOM_MIN, closeTab, createSidebarStore, defaultWidthFor, insertLeafAt, makeDefaultState,
-  migrateBottomTabs, moveTab, moveTabToEdge, openDiffTab, openHistoryTab, openTabInActivePane, openTerminalInBottom, patchTab, reconcileAgentTerminals, resizeSplit, resizeSplitIn, sanitizeState, setBottomHeight, splitPane, tabOpenIn, toggleBottomPanel, toggleExpanded, togglePanel,
+  collapseAllExplorer, expandExplorerToPath, migrateBottomTabs, moveTab, moveTabToEdge, openDiffTab, openHistoryTab, openTabInActivePane, openTerminalInBottom, patchTab, reconcileAgentTerminals, resizeSplit, resizeSplitIn, sanitizeState, setBottomHeight, splitPane, tabOpenIn, toggleBottomPanel, toggleExpanded, togglePanel,
   type SidebarState, type SidebarTab, type SplitNode,
 } from '../src/client/state.ts'
 import { loadPrefs, type SidebarSettingsClient } from '../src/client/prefs.ts'
@@ -25,7 +25,8 @@ import { SIDEBAR_PREFS_DEFAULTS } from '../src/prefs-shared.ts'
 import { extOf, languageKeyForExt } from '../src/client/lang.ts'
 import { isPdfExt } from '../src/client/pdf-types.ts'
 import { isImageExt } from '../src/client/image-types.ts'
-import { relativeTo } from '../src/client/paths.ts'
+import { previewFilePathOf } from '../src/client/explorer/reveal.ts'
+import { ancestorDirsOf, relativeTo, sameFsPath } from '../src/client/paths.ts'
 import { producedForClosing, resolveSidebarPath, selectProducedFiles } from '../src/client/produced-files.ts'
 import { wrapOpenPath, type OpenPathInterceptDeps, type OpenPathService } from '../src/client/openpath-intercept.ts'
 import { registerOpenPathInterception } from '../src/client/intercept.tsx'
@@ -465,6 +466,46 @@ describe('sidebar state', () => {
     const tabId = leaf.tabs[0]!.id
     const after = activateTab(s, leaf.id, tabId)
     expect((after.splits as { active: string | null }).active).toBe(tabId)
+  })
+
+  it('expandExplorerToPath opens ancestor directories of a workspace file', () => {
+    let s = state()
+    s = expandExplorerToPath(s, '/proj', '/proj/src/client/README.md')
+    expect(s.expanded).toEqual(['/proj/src', '/proj/src/client'])
+    const same = expandExplorerToPath(s, '/proj', '/proj/src/client/README.md')
+    expect(same).toBe(s)
+    expect(expandExplorerToPath(s, '/proj', '/other/x.ts')).toBe(s)
+    expect(expandExplorerToPath(state(), '/proj', '/proj/README.md').expanded).toEqual([])
+  })
+
+  it('collapseAllExplorer clears the expansion set', () => {
+    let s = toggleExpanded(state(), '/proj/src')
+    s = toggleExpanded(s, '/proj/docs')
+    s = collapseAllExplorer(s)
+    expect(s.expanded).toEqual([])
+    expect(collapseAllExplorer(s)).toBe(s)
+  })
+
+  it('prefers the conversation-header preview path over a sidebar editor', () => {
+    let s = state()
+    const leaf = s.splits as Extract<SplitNode, { kind: 'leaf' }>
+    s = {
+      ...s,
+      splits: {
+        ...leaf,
+        tabs: [...leaf.tabs, { id: 'editor:/proj/a.ts', type: 'editor', title: 'a.ts', path: '/proj/a.ts' }],
+        active: 'editor:/proj/a.ts',
+      },
+      centerTabs: [{ id: 'center:readme', type: 'editor', title: 'README.md', path: '/proj/README.md' }],
+      centerActive: 'center:readme',
+    }
+    expect(previewFilePathOf(s)).toBe('/proj/README.md')
+    s = { ...s, centerActive: null }
+    expect(previewFilePathOf(s)).toBe('/proj/a.ts')
+    s = { ...s, splits: { ...(s.splits as Extract<SplitNode, { kind: 'leaf' }>), active: leaf.tabs[0]!.id } }
+    expect(previewFilePathOf(s)).toBe('/proj/a.ts')
+    s = { ...s, splits: leaf }
+    expect(previewFilePathOf(s)).toBeUndefined()
   })
 
   it('patchTab updates the title and path of one open tab (browser persistence)', () => {
@@ -1115,6 +1156,22 @@ describe('path helpers', () => {
     expect(relativeTo('/Users/me/code', '/Users/me/code/src/main.ts')).toBe('src/main.ts')
     expect(relativeTo('/Users/me/code', '/Users/me/code')).toBe('.')
     expect(relativeTo('/Users/me/code/', '/Users/me/code/src/a/b.ts')).toBe('src/a/b.ts')
+  })
+
+  it('matches filesystem paths case-insensitively and across separators', () => {
+    expect(sameFsPath('/proj/cordis.patch.yml', '/proj/cordis.patch.yml')).toBe(true)
+    expect(sameFsPath('/proj/cordis.patch.yml', '/proj/CORDIS.patch.yml')).toBe(true)
+    expect(sameFsPath('C:\\proj\\a.ts', 'C:/proj/a.ts')).toBe(true)
+    expect(sameFsPath('/proj/a.ts', '/proj/b.ts')).toBe(false)
+    expect(sameFsPath(undefined, '/proj/a.ts')).toBe(false)
+  })
+
+  it('lists ancestor directories to expand for a workspace file', () => {
+    expect(ancestorDirsOf('/proj', '/proj/src/client/README.md')).toEqual(['/proj/src', '/proj/src/client'])
+    expect(ancestorDirsOf('/proj', '/proj/README.md')).toEqual([])
+    expect(ancestorDirsOf('/proj', '/proj')).toEqual([])
+    expect(ancestorDirsOf('/proj', '/other/x.ts')).toBeNull()
+    expect(ancestorDirsOf('C:\\proj', 'C:\\proj\\src\\a.ts')).toEqual(['C:\\proj\\src'])
   })
 
   it('falls back to the path unchanged when it lies outside the cwd', () => {

@@ -26,3 +26,31 @@ export function relativeTo(cwd: string, path: string): string {
   if (nPath.toLowerCase().startsWith(`${nBase.toLowerCase()}/`)) return nPath.slice(nBase.length + 1)
   return path
 }
+
+/** Whether two explorer paths name the same file (separators + letter case). */
+export function sameFsPath(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined || a === '' || b === '') return false
+  return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+}
+
+/**
+ * Absolute directories that must be expanded to show `path` in the explorer.
+ * Empty when the file sits in the workspace root; null when it is outside.
+ */
+export function ancestorDirsOf(cwd: string, path: string): string[] | null {
+  const rel = relativeTo(cwd, path)
+  if (rel === path) return null
+  if (rel === '.') return []
+  const parts = rel.split('/').filter(part => part !== '')
+  if (parts.length <= 1) return []
+  parts.pop()
+  const sep = cwd.includes('\\') ? '\\' : '/'
+  const base = cwd.replace(/[\\/]+$/, '')
+  const dirs: string[] = []
+  let acc = base
+  for (const part of parts) {
+    acc = `${acc}${sep}${part}`
+    dirs.push(acc)
+  }
+  return dirs
+}

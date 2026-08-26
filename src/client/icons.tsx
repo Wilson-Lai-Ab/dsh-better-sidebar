@@ -126,3 +126,18 @@ export const IconGlobeOutline16 = ({ size = 16, className }: IconProps) => (
     <path d="M1.5 8h13M8 1.5c-2.4 1.8-2.4 11.2 0 13M8 1.5c2.4 1.8 2.4 11.2 0 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 )
+
+/** Locate the current preview file in the explorer (crosshair). */
+export const IconLocateOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="8" cy="8" r="3.25" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M8 1.5v2.25M8 12.25V14.5M1.5 8h2.25M12.25 8H14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
+
+/** Collapse every expanded explorer directory. */
+export const IconCollapseAllOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3.5 7 8 3.5 12.5 7M3.5 12.5 8 9 12.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)

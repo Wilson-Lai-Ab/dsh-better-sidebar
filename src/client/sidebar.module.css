@@ -928,6 +928,12 @@
   white-space: nowrap;
 }
 
+.explorerHeaderActions {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
 .explorerFind {
   flex: none;
   padding: 0 8px 8px;
@@ -1028,6 +1034,11 @@
 
 .explorerRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.explorerRowActive,
+.explorerRowActive:hover {
+  background: var(--dsw-alias-interactive-bg-active);
 }
 
 .explorerDir {

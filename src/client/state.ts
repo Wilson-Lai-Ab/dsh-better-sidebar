@@ -11,6 +11,7 @@
  */
 import { SIDEBAR_PREFS_DEFAULTS, type SidebarPrefs } from '../prefs-shared.ts'
 import { isNarrowWidth } from './breakpoints.ts'
+import { ancestorDirsOf } from './paths.ts'
 
 /**
  * Tab type identifier. Builtins register their ids (explorer / git / editor
@@ -814,6 +815,21 @@ export function toggleExpanded(state: SidebarState, path: string): SidebarState 
     ? state.expanded.filter(item => item !== path)
     : [...state.expanded, path]
   return { ...state, expanded }
+}
+
+/** Expand every ancestor directory so a workspace file is visible. */
+export function expandExplorerToPath(state: SidebarState, cwd: string, path: string): SidebarState {
+  const dirs = ancestorDirsOf(cwd, path)
+  if (dirs === null) return state
+  const missing = dirs.filter(dir => !state.expanded.includes(dir))
+  if (missing.length === 0) return state
+  return { ...state, expanded: [...state.expanded, ...missing] }
+}
+
+/** Collapse every expanded explorer directory. */
+export function collapseAllExplorer(state: SidebarState): SidebarState {
+  if (state.expanded.length === 0) return state
+  return { ...state, expanded: [] }
 }
 
 /** Adjust one split divider: `i` is the left/top child index, delta in fractions. */

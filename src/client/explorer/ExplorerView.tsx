@@ -13,7 +13,7 @@
  * "copied" label replacing the button after a successful write); file
  * rows also offer a download action (the host serves raw bytes, binary-safe).
  */
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconBranchOutline16, IconCodeOutline16, IconCopyOutline16, IconDownloadOutline16,
@@ -24,10 +24,11 @@ import { presentFindHit } from '../../explorer/match.ts'
 import { setFileDragging } from '../dom-sync.ts'
 import { encodeFileRef, FILE_REF_MIME, fileClipboardText, fileRefOf } from '../file-ref.ts'
 import { classOfKind, gitKindByPath, type GitStatusKind } from '../git-status-style.ts'
-import { relativeTo } from '../paths.ts'
+import { ancestorDirsOf, relativeTo, sameFsPath } from '../paths.ts'
 import { t } from '../locales.ts'
-import { IconGlobeOutline16, IconTerminalOutline16 } from '../icons.tsx'
-import type { SidebarStore } from '../state.ts'
+import { IconCollapseAllOutline16, IconGlobeOutline16, IconLocateOutline16, IconTerminalOutline16 } from '../icons.tsx'
+import { collapseAllExplorer, expandExplorerToPath, type SidebarStore } from '../state.ts'
+import { previewFilePathOf } from './reveal.ts'
 import { gitFocusOf } from './git-focus.ts'
 import { pluginBrowserHref } from './plugin-browser.ts'
 import { entryNameOf, explorerRowMenuIds, siblingPathOf, terminalCwdOf } from './row-menu.ts'
@@ -47,6 +48,7 @@ function baseName(path: string): string {
 
 /** How long the row's "copied" label stays after a successful write. */
 const COPIED_MS = 1200
+const LOCATE_MS = 1200
 const FIND_DEBOUNCE_MS = 150
 
 function highlightName(name: string, indices: readonly number[]): ReactNode {
@@ -96,6 +98,7 @@ export function ExplorerView(props: {
   } = props
   const [data, setData] = useState<Record<string, LevelData>>({})
   const dataRef = useRef(data)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [gitKinds, setGitKinds] = useState<Map<string, GitStatusKind>>(() => new Map())
   /** The row whose path was just copied ("copied" label replaces its button). */
@@ -109,6 +112,15 @@ export function ExplorerView(props: {
   const [hits, setHits] = useState<FsFindHit[] | null>(null)
   const [findError, setFindError] = useState<string | null>(null)
   const [finding, setFinding] = useState(false)
+  const [locatePath, setLocatePath] = useState<string | null>(null)
+  const snapshot = useSyncExternalStore(
+    store?.subscribe ?? (() => () => {}),
+    () => store?.getSnapshot().state,
+    () => store?.getSnapshot().state,
+  )
+  const previewPath = snapshot === undefined ? undefined : previewFilePathOf(snapshot)
+  const canLocate = cwd !== undefined && previewPath !== undefined && ancestorDirsOf(cwd, previewPath) !== null
+  const canCollapse = expanded.length > 0
 
   const storeLevel = useCallback((path: string, level: LevelData) => {
     dataRef.current = { ...dataRef.current, [path]: level }
@@ -177,6 +189,17 @@ export function ExplorerView(props: {
     loadDir(root)
     for (const dir of expanded) loadDir(dir)
   }, [cwd, expanded, refreshTick, loadDir])
+
+  useEffect(() => {
+    if (locatePath === null) return
+    const row = bodyRef.current?.querySelector(`[data-explorer-path="${CSS.escape(locatePath)}"]`)
+    if (!(row instanceof HTMLElement)) return
+    row.scrollIntoView({ block: 'center' })
+    const timer = window.setTimeout(() => {
+      setLocatePath(current => current === locatePath ? null : current)
+    }, LOCATE_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [locatePath, data, expanded])
 
   useEffect(() => {
     const clear = (): void => { setFileDragging(false) }
@@ -334,7 +357,8 @@ export function ExplorerView(props: {
               role="button"
               tabIndex={0}
               draggable
-              className={clsx(css.explorerRow, css.explorerDir, entry.hidden && css.explorerHidden)}
+              data-explorer-path={entry.path}
+              className={clsx(css.explorerRow, css.explorerDir, entry.hidden && css.explorerHidden, sameFsPath(locatePath ?? undefined, entry.path) && css.explorerRowActive)}
               style={{ paddingLeft: depth * 22 + 6 }}
               onDragStart={(event) => { startFileDrag(event, entry.path) }}
               onDragEnd={() => { setFileDragging(false) }}
@@ -361,7 +385,8 @@ export function ExplorerView(props: {
           role="button"
           tabIndex={0}
           draggable
-          className={clsx(css.explorerRow, entry.hidden && css.explorerHidden)}
+          data-explorer-path={entry.path}
+          className={clsx(css.explorerRow, entry.hidden && css.explorerHidden, (sameFsPath(previewPath, entry.path) || sameFsPath(locatePath ?? undefined, entry.path)) && css.explorerRowActive)}
           style={{ paddingLeft: depth * 22 + 6 }}
           title={entry.path}
           onDragStart={(event) => { startFileDrag(event, entry.path) }}
@@ -393,19 +418,46 @@ export function ExplorerView(props: {
     <div className={css.explorer}>
       <div className={css.explorerHeader}>
         <span className={css.explorerRoot} title={root}>{root === undefined ? t('noSession') : baseName(root)}</span>
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={t('refresh')}
-          title={t('refresh')}
-          onClick={() => {
-            dataRef.current = {}
-            setData({})
-            setRefreshTick(tick => tick + 1)
-          }}
-        >
-          <IconRefreshOutline16 size={14} />
-        </button>
+        <div className={css.explorerHeaderActions}>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={t('locateInExplorer')}
+            title={t('locateInExplorer')}
+            disabled={!canLocate}
+            onClick={() => {
+              if (store === undefined || cwd === undefined || previewPath === undefined) return
+              setQuery('')
+              store.reduce(s => expandExplorerToPath(s, cwd, previewPath))
+              setLocatePath(previewPath)
+            }}
+          >
+            <IconLocateOutline16 size={14} />
+          </button>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={t('collapseExplorer')}
+            title={t('collapseExplorer')}
+            disabled={!canCollapse}
+            onClick={() => { store?.reduce(s => collapseAllExplorer(s)) }}
+          >
+            <IconCollapseAllOutline16 size={14} />
+          </button>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={t('refresh')}
+            title={t('refresh')}
+            onClick={() => {
+              dataRef.current = {}
+              setData({})
+              setRefreshTick(tick => tick + 1)
+            }}
+          >
+            <IconRefreshOutline16 size={14} />
+          </button>
+        </div>
       </div>
       <div className={css.explorerFind}>
         <input
@@ -417,7 +469,7 @@ export function ExplorerView(props: {
           onChange={(event) => { setQuery(event.target.value) }}
         />
       </div>
-      <div className={css.explorerBody}>
+      <div className={css.explorerBody} ref={bodyRef}>
         {root === undefined ? (
           <div className={css.explorerEmpty}>{t('noSession')}</div>
         ) : query.trim() !== '' ? (
@@ -439,7 +491,7 @@ export function ExplorerView(props: {
                   key={hit.path}
                   role="button"
                   tabIndex={0}
-                  className={clsx(css.explorerRow, css.explorerFindRow)}
+                  className={clsx(css.explorerRow, css.explorerFindRow, sameFsPath(previewPath, hit.path) && css.explorerRowActive)}
                   title={hit.rel}
                   onClick={() => { onOpenFile(hit.path) }}
                   onDoubleClick={(event) => {
