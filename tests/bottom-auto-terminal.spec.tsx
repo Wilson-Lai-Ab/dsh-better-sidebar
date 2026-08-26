@@ -43,6 +43,11 @@ interface MountedSidebar {
   unmount: () => void
 }
 
+/** Roots still mounted at teardown — every mount is registered and torn down
+ *  in afterEach so Sidebar effects cannot outlive the file and trip the
+ *  vitest "Closing rpc while onUserConsoleLog was pending" teardown race. */
+const mountedRoots: Array<() => void> = []
+
 /** Mount the real Sidebar shell against a minimal context (real store + service). */
 function mountSidebar(): MountedSidebar {
   vi.stubGlobal('WebSocket', FakeWebSocket)
@@ -68,18 +73,16 @@ function mountSidebar(): MountedSidebar {
   }
   const root: Root = createRoot(container)
   act(() => { root.render(createElement(Sidebar, { ctx: ctx as never, store })) })
-  return {
-    container,
-    store,
-    service,
-    unmount: () => {
-      act(() => { root.unmount() })
-      container.remove()
-    },
+  const unmount = (): void => {
+    act(() => { root.unmount() })
+    container.remove()
   }
+  mountedRoots.push(unmount)
+  return { container, store, service, unmount }
 }
 
 afterEach(() => {
+  for (const tearDown of mountedRoots.splice(0)) tearDown()
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
 })
