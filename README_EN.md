@@ -4,7 +4,7 @@
 <div align="center">
   <b style="font-size: 1.15em;">A service-oriented sidebar framework, and a complete workbench out of the box</b><br /><br />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
-  <a href="https://dshfind.com/en/plugins/omdsh-dev/DSH-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/omdsh-dev/DSH-better-sidebar?lang=en" /></a><br /><br />
+  <a href="https://dshfind.com/en/plugins/Wilson-Lai-Ab/dsh-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/Wilson-Lai-Ab/dsh-better-sidebar?lang=en" /></a><br /><br />
   <img alt="File management" src="https://img.shields.io/badge/-File%20management-4d6bfe" /> <img alt="Edit &amp; preview" src="https://img.shields.io/badge/-Edit%20%26%20preview-4d6bfe" /> <img alt="Embedded browser" src="https://img.shields.io/badge/-Embedded%20browser-4d6bfe" /> <img alt="Real terminal" src="https://img.shields.io/badge/-Real%20terminal-4d6bfe" /> <img alt="Git panel" src="https://img.shields.io/badge/-Git%20panel-4d6bfe" /> <img alt="Background tasks" src="https://img.shields.io/badge/-Background%20tasks-4d6bfe" /> <img alt="Plugin integration" src="https://img.shields.io/badge/-Plugin%20integration-4d6bfe" /><br /><br />
   <b>A dual workbench (right sidebar + bottom panel)</b> that opens its <code>ctx.betterSidebar</code> service to every plugin —<br />
   register new sidebar pages and file viewers via <code>registerTab</code> / <code>registerFileViewer</code>.
@@ -46,7 +46,7 @@
 | 🔌 Service API base | Complete type exports + `version`/`features` capability detection, state subscription (`getSnapshot`/`subscribeState`), tab `badge`, `onOpen`/`onActivate`/`onClose` lifecycle callbacks, `updateTab`/`activateTab`/`openFile`, targeted open, `meta` persisted across reloads, plugin-owned settings (`pluginToggles`/`render`), external-link claim (`urlTarget`) | <a href="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0"><img width="480" alt="Service API base screenshot" src="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0" /></a> |
 | ➕ Add Plugins | Recommended plugin catalog in settings + one-click copy install command; built-in Office preview moved to the recommended plugin | <a href="https://github.com/user-attachments/assets/d4385b7e-aab4-425d-a5c4-2da5da81a34e"><img width="480" alt="Add Plugins screenshot" src="https://github.com/user-attachments/assets/d4385b7e-aab4-425d-a5c4-2da5da81a34e" /></a> |
 | 🖱️ Tab-bar scroll | Mouse-wheel horizontal scrolling on the tab bar | |
-| 🐛 Fixes | Remote access 403 (trust fence now uses `trustedHosts`), sidebar crash [#31](https://github.com/omdsh-dev/DSH-better-sidebar/issues/31), Windows HTML-preview drive-path | |
+| 🐛 Fixes | Remote access 403 (trust fence now uses `trustedHosts`), sidebar crash (historical issue #31), Windows HTML-preview drive-path | |
 
 ## 🚀 Installation
 
@@ -55,13 +55,13 @@
 **macOS / Linux** (also works in Git Bash / WSL on Windows):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell 5.1+ / pwsh)**:
 
 ```powershell
-irm https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1 | iex
 ```
 
 Then **hard-refresh the browser** (Cmd/Ctrl+Shift+R) to see the sidebar (DSH hot-reloads client changes; only host-half updates need a restart).
@@ -71,10 +71,10 @@ Then **hard-refresh the browser** (Cmd/Ctrl+Shift+R) to see the sidebar (DSH hot
 
 ```sh
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
+curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
 
 # Windows PowerShell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
 ```
 
 Not sure? Add `--dry-run` (`-DryRun` in PowerShell) to preview before running.
@@ -167,8 +167,8 @@ or re-run the one-click script; or bump the version in `~/.dsh/profiles/web/pack
 To debug local changes or track the dev branch, point the dependency at a local clone and build it yourself:
 
 ```text
-1. git clone https://github.com/omdsh-dev/DSH-better-sidebar.git ~/Code/DSH-better-sidebar
-   cd ~/Code/DSH-better-sidebar && pnpm install && pnpm build
+1. git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git ~/Code/dsh-better-sidebar
+   cd ~/Code/dsh-better-sidebar && pnpm install && pnpm build
 2. In ~/.dsh/profiles/web/package.json dependencies write "dsh-better-sidebar": "link:<absolute path of the clone>"
 3. Append this mount line to ~/.dsh/profiles/web/cordis.patch.yml:
    - insert:
@@ -188,7 +188,7 @@ Update: `git pull && pnpm install && pnpm build` → just hard-refresh the brows
 Prerequisite: DSH with [plugin-registry](https://github.com/dsh-external/plugin-registry) integrated (`dsh registry` available). **Enabling both channels double-mounts** (the Node half loads twice, the page gets two sidebars).
 
 ```sh
-git clone https://github.com/omdsh-dev/DSH-better-sidebar.git && cd DSH-better-sidebar
+git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git && cd dsh-better-sidebar
 pnpm install && pnpm build
 node scripts/package-registry.mjs   # assemble the registry/ staging (manifest + artifacts + README, not committed)
 dsh registry install ./registry     # install (disabled by default)

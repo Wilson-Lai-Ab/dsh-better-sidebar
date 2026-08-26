@@ -6,7 +6,7 @@
 
 ## 1. 目标
 
-基于 [PR #74](https://github.com/omdsh-dev/DSH-better-sidebar/pull/74)（聊天区外链开关颗粒度讨论）向前兼容地拓展服务化 API：
+基于历史 PR #74（聊天区外链开关颗粒度讨论）向前兼容地拓展服务化 API：
 
 1. **插件声明「点击打开的类型」**：`TabDescriptor` 新增可选 `urlTarget?: (url: URL) => boolean`——聊天区外链被拦截时，路由到第一个声明的、命中的、未被设置禁用的插件 tab 类型（`openTab({ type, url, title: hostname })`，URL 即全部载荷），内置浏览器 tab 退居隐式兜底。
 2. **浏览器链接设置改为二级菜单**（浏览器卡片齿轮弹窗内）：

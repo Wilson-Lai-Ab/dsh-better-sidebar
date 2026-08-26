@@ -4,7 +4,7 @@
 <div align="center">
   <b style="font-size: 1.15em;">一个服务化的侧边栏框架，一套开箱即用的完整工作台</b><br /><br />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
-  <a href="https://dshfind.com/zh/plugins/omdsh-dev/DSH-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/omdsh-dev/DSH-better-sidebar?lang=zh" /></a><br /><br />
+  <a href="https://dshfind.com/zh/plugins/Wilson-Lai-Ab/dsh-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/Wilson-Lai-Ab/dsh-better-sidebar?lang=zh" /></a><br /><br />
   <img alt="文件管理" src="https://img.shields.io/badge/-文件管理-4d6bfe" /> <img alt="编辑预览" src="https://img.shields.io/badge/-编辑预览-4d6bfe" /> <img alt="内嵌浏览器" src="https://img.shields.io/badge/-内嵌浏览器-4d6bfe" /> <img alt="真实终端" src="https://img.shields.io/badge/-真实终端-4d6bfe" /> <img alt="Git 面板" src="https://img.shields.io/badge/-Git%20面板-4d6bfe" /> <img alt="后台任务" src="https://img.shields.io/badge/-后台任务-4d6bfe" /> <img alt="插件接入" src="https://img.shields.io/badge/-插件接入-4d6bfe" /><br /><br />
   <b>右侧栏 + 底部面板双工作台</b>，并把 <code>ctx.betterSidebar</code> 服务开放给所有插件——<br />
   通过 <code>registerTab</code> / <code>registerFileViewer</code> 注册新的侧边栏页面与文件预览器。
@@ -46,7 +46,7 @@
 | 🔌 服务化基座 | 完整类型导出 + `version`/`features` 能力探测、状态订阅（`getSnapshot`/`subscribeState`）、tab 角标、`onOpen`/`onActivate`/`onClose` 生命周期回调、`updateTab`/`activateTab`/`openFile`、定向打开、`meta` 跨刷新持久化、插件自有设置（`pluginToggles`/`render`）、外链点击目标认领（`urlTarget`） | <a href="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0"><img width="800" alt="服务化基座截图" src="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0" /></a> |
 | ➕ 添加插件 | 设置页「推荐插件目录」+ 一键复制安装命令；内置 Office 预览迁至推荐插件 | <a href="https://github.com/user-attachments/assets/d4385b7e-aab4-425d-a5c4-2da5da81a34e"><img width="800" alt="添加插件截图" src="https://github.com/user-attachments/assets/d4385b7e-aab4-425d-a5c4-2da5da81a34e" /></a> |
 | 🖱️ 标签页滚轮 | 标签页栏支持鼠标滚轮横向滚动 | |
-| 🐛 修复 | 远程访问 403（信任栅栏改用 `trustedHosts`）、侧边栏崩溃 [#31](https://github.com/omdsh-dev/DSH-better-sidebar/issues/31)、Windows 下 HTML 预览盘符路径 | |
+| 🐛 修复 | 远程访问 403（信任栅栏改用 `trustedHosts`）、侧边栏崩溃（历史 issue #31）、Windows 下 HTML 预览盘符路径 | |
 
 ## 🚀 安装
 
@@ -55,13 +55,13 @@
 **macOS / Linux**（Windows 装了 Git Bash 或 WSL 也可）：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash
 ```
 
 **Windows（PowerShell 5.1+ / pwsh）**：
 
 ```powershell
-irm https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1 | iex
 ```
 
 装完**硬刷新浏览器**（Cmd/Ctrl+Shift+R）即可看到侧边栏（DSH 对 client 改动热加载，无需重启；仅 host 半更新时需要重启）。
@@ -71,10 +71,10 @@ irm https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/
 
 ```sh
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
+curl -fsSL https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.sh | bash -s 0.12.2 --restart
 
 # Windows PowerShell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/omdsh-dev/DSH-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Wilson-Lai-Ab/dsh-better-sidebar/main/scripts/install.ps1'))) -Version 0.12.2 -Restart
 ```
 
 不确定的话，可先加 `--dry-run`（PowerShell 用 `-DryRun`）预览步骤再执行。
@@ -167,8 +167,8 @@ dsh plugin --profile web add dsh-better-sidebar
 调试本地改动或跟随开发分支时，把依赖指向本地克隆并自行构建：
 
 ```text
-1. git clone https://github.com/omdsh-dev/DSH-better-sidebar.git ~/Code/DSH-better-sidebar
-   cd ~/Code/DSH-better-sidebar && pnpm install && pnpm build
+1. git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git ~/Code/dsh-better-sidebar
+   cd ~/Code/dsh-better-sidebar && pnpm install && pnpm build
 2. ~/.dsh/profiles/web/package.json 的 dependencies 写 "dsh-better-sidebar": "link:<克隆目录绝对路径>"
 3. ~/.dsh/profiles/web/cordis.patch.yml 追加挂载行：
    - insert:
@@ -188,7 +188,7 @@ dsh plugin --profile web add dsh-better-sidebar
 前置：DSH 已集成 [plugin-registry](https://github.com/dsh-external/plugin-registry)（`dsh registry` 可用）。**同时启用两个通道会双挂载**（Node 半挂两次、页面两个侧边栏）。
 
 ```sh
-git clone https://github.com/omdsh-dev/DSH-better-sidebar.git && cd DSH-better-sidebar
+git clone https://github.com/Wilson-Lai-Ab/dsh-better-sidebar.git && cd dsh-better-sidebar
 pnpm install && pnpm build
 node scripts/package-registry.mjs   # 组装 registry/ 暂存（含清单 + 产物 + README，不入库）
 dsh registry install ./registry     # 安装（默认禁用）

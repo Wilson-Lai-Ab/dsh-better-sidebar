@@ -6,7 +6,7 @@
 
 ## 1. 目标
 
-让 better-sidebar 与 **dsh-web-ui 的皮肤中心**兼容：用户切换皮肤时侧边栏自动跟随换肤，零每皮肤适配（KISS：不做 aionui 式"每款皮肤 remap 一套令牌"的重活）。附带修复同批 CSS 问题（[#52](https://github.com/omdsh-dev/DSH-better-sidebar/issues/52) 弹出框遮挡、[#57](https://github.com/omdsh-dev/DSH-better-sidebar/issues/57) 前半图标尺寸、[#92](https://github.com/omdsh-dev/DSH-better-sidebar/issues/92) 拖拽回归防护），并覆盖 [#60](https://github.com/omdsh-dev/DSH-better-sidebar/issues/60)/[#105](https://github.com/omdsh-dev/DSH-better-sidebar/issues/105)/[#90](https://github.com/omdsh-dev/DSH-better-sidebar/issues/90) 的相关诉求。
+让 better-sidebar 与 **dsh-web-ui 的皮肤中心**兼容：用户切换皮肤时侧边栏自动跟随换肤，零每皮肤适配（KISS：不做 aionui 式"每款皮肤 remap 一套令牌"的重活）。附带修复同批 CSS 问题（历史 issue #52 弹出框遮挡、#57 前半图标尺寸、#92 拖拽回归防护），并覆盖 #60 / #105 / #90 的相关诉求。
 
 ## 2. 调研结论
 

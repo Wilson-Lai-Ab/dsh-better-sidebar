@@ -6,7 +6,7 @@
 
 ## 1. 目标
 
-修复 [issue #25](https://github.com/omdsh-dev/DSH-better-sidebar/issues/25)：WKWebView 下点击「展开底部面板」后底部面板内容空白、无终端，控制台报 `Cannot read properties of undefined (reading 'dimensions')` 与 `(reading 'handleResize')`。
+修复 issue #25：WKWebView 下点击「展开底部面板」后底部面板内容空白、无终端，控制台报 `Cannot read properties of undefined (reading 'dimensions')` 与 `(reading 'handleResize')`。
 
 根因：`TerminalView` 的挂载 effect 在容器可能为零尺寸时**同步**执行 `term.open(host); fit.fit()`。xterm 5.3.0 在零尺寸容器里 open 时渲染器创建失败，`RenderService._renderer.value` 保持 undefined，随后 Viewport 的 `_innerRefresh` 读 `_renderService.dimensions`（getter 即 `_renderer.value.dimensions`）崩溃。Chrome（Blink）对零尺寸布局更宽容所以不崩；WKWebView 稳定复现。
 

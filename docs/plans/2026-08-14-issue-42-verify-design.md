@@ -7,7 +7,7 @@
 
 ## 1. 问题报告
 
-[issue #42](https://github.com/omdsh-dev/DSH-better-sidebar/issues/42)（Windows 11 / QQBrowser / dsh-launcher 宿主 / 插件 0.10.3）：
+issue #42（Windows 11 / QQBrowser / dsh-launcher 宿主 / 插件 0.10.3）：
 
 1. 全新安装后重启 + 硬刷新，首次展开底部面板（`bottomPanelAutoTerminal` 默认开）→ **整个底部面板空白，连标签栏都没有**；
 2. 控制台两条关键报错：
@@ -20,7 +20,7 @@
 
 ### 2.1 根因 = issue #25 的同一 bug
 
-与 [issue #25](https://github.com/omdsh-dev/DSH-better-sidebar/issues/25)（WKWebView 底部面板终端空白）完全同源，证据链：
+与 issue #25（WKWebView 底部面板终端空白）完全同源，证据链：
 
 - **触发路径一致**：`Sidebar.tsx` 的「底部面板首次展开自动开终端」effect（`bottomOpenedOnce` 过渡）在面板 slide-in transition 的**同一次 commit** 挂载 `TerminalView`。`docs/plans/2026-08-14-terminal-open-when-sized-design.md` §3 在设计 #25 修复时已明确把该路径列为零尺寸挂载路径之一。
 - **崩溃签名逐字一致**：0.10.3 的 `TerminalView` 挂载 effect 同步执行 `term.open(host); fit.fit()`（无尺寸守卫）。xterm 5.3.0 在零尺寸容器 open 时渲染器创建失败，`RenderService._renderer` 保持 undefined → `Viewport._innerRefresh` 读 `_renderService.dimensions`（getter 即 `_renderer.value.dimensions`）、idle 任务读 `handleResize` 全部抛 "Cannot read properties of undefined"——与 #42 两条报错逐字对应。
