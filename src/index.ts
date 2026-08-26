@@ -29,7 +29,7 @@ import {
   type SidebarConfig,
   type SidebarPrefs,
 } from './config.ts'
-import { fencedRename, isWithin, parentOf, requireAbsolute, listDirectory, openInBrowserCommand, revealCommand, rootLabel } from './explorer/index.ts'
+import { FIND_LIMIT_DEFAULT, fencedRename, findFiles, isWithin, parentOf, requireAbsolute, listDirectory, openInBrowserCommand, revealCommand, rootLabel } from './explorer/index.ts'
 import { decodeHtmlUrl } from './html-route.ts'
 import { extractFrameAncestors } from './browser-probe.ts'
 import { isTrustedApiRequest, isLoopbackHostname } from './trust-fence.ts'
@@ -231,6 +231,12 @@ function buildApi(
       const record = payload as { path?: unknown }
       const target = record.path === undefined ? cwd : requireAbsolute(requireString(payload, 'path'))
       return listDirectory(target, resolved.listLimit)
+    },
+    'fs.find': async (payload) => {
+      const { cwd } = cwdOf(payload)
+      const record = payload as { query?: unknown }
+      const query = typeof record.query === 'string' ? record.query : ''
+      return { hits: await findFiles(cwd, query, { limit: FIND_LIMIT_DEFAULT }) }
     },
     'fs.read': async (payload) => {
       const { cwd } = cwdOf(payload)

@@ -436,6 +436,38 @@ describe('session cwd resolution over the API route', () => {
     expect(result.error?.message).toMatch(/invalid working directory/)
   })
 
+  it('fs.find ranks basename hits and skips ignored directories', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-find-'))
+    const route = mount({
+      sessions: { get: () => ({ header: { cwd: workspace } }) },
+    })
+    try {
+      mkdirSync(join(workspace, 'src', 'client'), { recursive: true })
+      mkdirSync(join(workspace, 'node_modules', 'pkg'), { recursive: true })
+      writeFileSync(join(workspace, 'src', 'client', 'ReviewView.tsx'), '')
+      writeFileSync(join(workspace, 'src', 'review-store.ts'), '')
+      writeFileSync(join(workspace, 'node_modules', 'pkg', 'ReviewView.js'), '')
+      const result = await invoke(route, 'fs.find', {
+        sessionId: 's-find',
+        cwd: workspace,
+        query: 'reviewv',
+      }) as { ok: boolean; value?: { hits: { rel: string; path: string; score: number; indices: number[] }[] }; error?: { message: string } }
+      expect(result.ok).toBe(true)
+      expect(result.value?.hits.map(hit => hit.rel)).toEqual(['src/client/ReviewView.tsx'])
+      expect(result.value?.hits[0]!.path).toBe(join(workspace, 'src', 'client', 'ReviewView.tsx'))
+      expect(result.value?.hits[0]!.indices.length).toBeGreaterThan(0)
+      const empty = await invoke(route, 'fs.find', {
+        sessionId: 's-find',
+        cwd: workspace,
+        query: '   ',
+      }) as { ok: boolean; value?: { hits: unknown[] } }
+      expect(empty.ok).toBe(true)
+      expect(empty.value?.hits).toEqual([])
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
   it('fs.rename moves a sibling under the session cwd and refuses a directory hop', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-rename-'))
     const route = mount({
