@@ -29,5 +29,11 @@ export declare function buildPathTree<T extends {
  * files or more than one child stays a real expand point.
  */
 export declare function compactPathTree<T>(nodes: readonly PathTreeNode<T>[]): PathTreeNode<T>[];
+/**
+ * Collapse every directory except `focusDir` and its ancestors. An empty
+ * focus (the repo root) expands the whole tree — IDEA's "this folder" view
+ * when the explorer points at the work-tree root.
+ */
+export declare function collapsedDirsForFocus<T>(nodes: readonly PathTreeNode<T>[], focusDir: string): Set<string>;
 /** Every directory key in the tree (used to start fully expanded). */
 export declare function collectDirKeys<T>(nodes: readonly PathTreeNode<T>[]): string[];

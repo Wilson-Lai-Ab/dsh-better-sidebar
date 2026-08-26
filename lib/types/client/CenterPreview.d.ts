@@ -13,7 +13,19 @@ import { type SidebarState, type SidebarStore } from './state.ts';
  * Trajectory hides the overlay; clicking a docked file tab shows it.
  * Must stay mounted even while the overlay is hidden.
  */
-export declare function useHostHeaderTabSync(ctx: Context, store: SidebarStore): void;
+export type CenterTabMenu = {
+    tabId: string;
+    x: number;
+    y: number;
+};
+export declare function useHostHeaderTabSync(ctx: Context, store: SidebarStore, onTabMenu: (menu: CenterTabMenu) => void): void;
+export declare function CenterTabContextMenu(props: {
+    ctx: Context;
+    store: SidebarStore;
+    sessionId: string | undefined;
+    menu: CenterTabMenu | null;
+    onClose: () => void;
+}): ReactNode;
 export declare function CenterPreview(props: {
     ctx: Context;
     store: SidebarStore;
@@ -25,4 +37,5 @@ export declare function CenterPreview(props: {
     top: number;
     bottom: number;
     onReferenceFile: (path: string) => void;
+    onTabMenu: (menu: CenterTabMenu) => void;
 }): ReactNode;

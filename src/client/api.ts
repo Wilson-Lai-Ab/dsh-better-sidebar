@@ -148,6 +148,12 @@ export const api = {
     call<{ ok: true }>('fs.write', scopePayload(scope, { path, content })),
   fsUnlink: (scope: SessionScope, path: string) =>
     call<{ ok: true }>('fs.unlink', scopePayload(scope, { path })),
+  fsRename: (scope: SessionScope, from: string, to: string) =>
+    call<{ ok: true; path: string }>('fs.rename', scopePayload(scope, { from, to })),
+  fsReveal: (scope: SessionScope, path: string) =>
+    call<{ ok: true }>('fs.reveal', scopePayload(scope, { path })),
+  fsOpenInBrowser: (scope: SessionScope, path: string) =>
+    call<{ ok: true }>('fs.openInBrowser', scopePayload(scope, { path })),
   gitShow: (scope: SessionScope, path: string, rev: string, signal?: AbortSignal) =>
     call<{ content: string | null }>('git.show', scopePayload(scope, { path, rev }), signal),
   gitRepos: (scope: SessionScope, signal?: AbortSignal) =>

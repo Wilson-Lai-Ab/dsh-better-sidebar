@@ -17,7 +17,7 @@ import { parseLogLines, parsePorcelainZ } from '../src/git.ts'
 import { parseUnifiedDiff } from '../src/client/DiffView.tsx'
 import {
   activateTab, allLeaves, BOTTOM_DEFAULT, BOTTOM_MIN, closeTab, createSidebarStore, defaultWidthFor, insertLeafAt, makeDefaultState,
-  migrateBottomTabs, moveTab, moveTabToEdge, openDiffTab, openTabInActivePane, patchTab, reconcileAgentTerminals, resizeSplit, resizeSplitIn, sanitizeState, setBottomHeight, splitPane, tabOpenIn, toggleBottomPanel, toggleExpanded, togglePanel,
+  migrateBottomTabs, moveTab, moveTabToEdge, openDiffTab, openHistoryTab, openTabInActivePane, openTerminalInBottom, patchTab, reconcileAgentTerminals, resizeSplit, resizeSplitIn, sanitizeState, setBottomHeight, splitPane, tabOpenIn, toggleBottomPanel, toggleExpanded, togglePanel,
   type SidebarState, type SidebarTab, type SplitNode,
 } from '../src/client/state.ts'
 import { loadPrefs, type SidebarSettingsClient } from '../src/client/prefs.ts'
@@ -535,6 +535,26 @@ describe('sidebar state', () => {
   })
 
   // ── Bottom panel (the second, independent workbench) ───────────────────
+
+  it('openTerminalInBottom lands a new terminal in the bottom panel', () => {
+    let s = state()
+    const tab = { id: 'terminal:4', type: 'terminal', title: 'Terminal 4', path: '/work/src' }
+    s = openTerminalInBottom(s, tab)
+    expect(s.bottomOpen).toBe(true)
+    expect((s.bottomSplits as { tabs: SidebarTab[] }).tabs.some(item => item.id === 'terminal:4')).toBe(true)
+    expect((s.bottomSplits as { tabs: SidebarTab[]; active: string | null }).active).toBe('terminal:4')
+    expect((s.splits as { tabs: SidebarTab[] }).tabs.map(item => item.type)).toEqual(['explorer'])
+  })
+
+  it('openTerminalInBottom refuses a fourth UI terminal', () => {
+    let s = state()
+    s = openTabInActivePane(s, { id: 'terminal:1', type: 'terminal', title: 'T1' })
+    s = openTabInActivePane(s, { id: 'terminal:2', type: 'terminal', title: 'T2' })
+    s = openTabInActivePane(s, { id: 'terminal:3', type: 'terminal', title: 'T3' })
+    const after = openTerminalInBottom(s, { id: 'terminal:4', type: 'terminal', title: 'T4', path: '/work/src' })
+    expect(after).toBe(s)
+    expect(tabOpenIn(after, 'terminal:4')).toBe(false)
+  })
 
   it('toggleBottomPanel flips the bottom panel independently of the right panel', () => {
     let s = state()

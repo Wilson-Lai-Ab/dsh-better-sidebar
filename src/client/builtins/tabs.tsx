@@ -8,7 +8,9 @@
  */
 import { IconBranchOutline16, IconCodeOutline16, IconFolderOpen16, IconThinkOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../../context-types.ts'
-import { allLeaves, isAgentTabId, type SidebarState } from '../state.ts'
+import { allLeaves, isAgentTabId, openTerminalInBottom, togglePanel, type SidebarState } from '../state.ts'
+import { requestGitFocus } from '../git-focus.ts'
+import { gitFocusOf } from '../explorer/git-focus.ts'
 import { t } from '../locales.ts'
 import { openSidebarFile, openSidebarFileAbove } from '../intercept.tsx'
 import { ExplorerView } from '../explorer/index.ts'
@@ -50,6 +52,7 @@ interface TerminalViewProps {
   scope: SessionScope
   tabId: string
   store: SidebarStore
+  dir?: string
 }
 
 /** How many UI-owned terminals may be open at once (agent-owned ones are uncapped). */
@@ -88,11 +91,40 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
         <ExplorerView
           sessionId={scope.sessionId}
           cwd={scope.cwd}
+          store={store}
           expanded={expanded ?? []}
           onToggle={onToggleDir ?? (() => { /* no-op */ })}
           onOpenFile={(path) => { openSidebarFile(ctx, store, scope.sessionId, path) }}
           onOpenFileAbove={(path) => { openSidebarFileAbove(ctx, store, scope.sessionId, path) }}
           onReferenceFile={onReferenceFile ?? (() => { /* no-op */ })}
+          onOpenGit={(path, isDir, repos) => {
+            if (ctx.betterSidebar?.isTabEnabled('git') === false) return
+            const focus = gitFocusOf(path, isDir, repos)
+            if (focus === undefined) return
+            requestGitFocus(focus)
+            store.reduce(s => s.panelOpen ? s : togglePanel(s))
+            ctx.betterSidebar?.openTab({ type: 'git', title: t('git') }, scope)
+          }}
+          onOpenTerminal={(dir) => {
+            if (ctx.betterSidebar?.isTabEnabled('terminal') === false) return
+            store.reduce((s) => {
+              const tab = {
+                id: `terminal:${s.nextTerminal}`,
+                type: 'terminal',
+                title: `${t('terminal')} ${s.nextTerminal}`,
+                path: dir,
+              }
+              const next = openTerminalInBottom(s, tab)
+              if (next === s) return s
+              return { ...next, nextTerminal: s.nextTerminal + 1 }
+            })
+          }}
+          onOpenPluginBrowser={(href) => {
+            if (ctx.betterSidebar?.isTabEnabled('browser') === false) return
+            let title = t('browser')
+            try { title = new URL(href).hostname || title } catch { /* keep default */ }
+            ctx.betterSidebar?.openTab({ type: 'browser', url: href, title }, scope)
+          }}
         />
       ),
     },
@@ -222,7 +254,9 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
           patch: { nextTerminal: state.nextTerminal + 1 },
         }
       },
-      component: ({ tab, scope, store }) => <LazyTerminal scope={scope} store={store} tabId={tab.id} />,
+      component: ({ tab, scope, store }) => (
+        <LazyTerminal scope={scope} store={store} tabId={tab.id} dir={tab.path} />
+      ),
     },
     {
       id: 'browser',

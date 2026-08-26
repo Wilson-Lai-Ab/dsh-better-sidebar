@@ -83,6 +83,34 @@ function compactNode<T>(node: PathTreeNode<T>): PathTreeNode<T> {
   return { kind: 'dir', name, key, children }
 }
 
+/**
+ * Collapse every directory except `focusDir` and its ancestors. An empty
+ * focus (the repo root) expands the whole tree — IDEA's "this folder" view
+ * when the explorer points at the work-tree root.
+ */
+export function collapsedDirsForFocus<T>(
+  nodes: readonly PathTreeNode<T>[],
+  focusDir: string,
+): Set<string> {
+  if (focusDir === '') return new Set()
+  const collapsed = new Set<string>()
+  const walk = (items: readonly PathTreeNode<T>[]): void => {
+    for (const node of items) {
+      if (node.kind !== 'dir') continue
+      // Ancestors of the focus stay open; a compacted chain whose key is
+      // deeper than the focus (src/main/java when focus is src) stays open
+      // too so the row that represents the folder is visible.
+      const open = node.key === focusDir
+        || focusDir.startsWith(`${node.key}/`)
+        || node.key.startsWith(`${focusDir}/`)
+      if (!open) collapsed.add(node.key)
+      walk(node.children)
+    }
+  }
+  walk(nodes)
+  return collapsed
+}
+
 /** Every directory key in the tree (used to start fully expanded). */
 export function collectDirKeys<T>(nodes: readonly PathTreeNode<T>[]): string[] {
   const keys: string[] = []

@@ -1043,6 +1043,19 @@
   text-overflow: ellipsis;
 }
 
+.explorerRename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
 /* The hover-revealed @-reference button at the row's far right (and the
    transient "copied" label that replaces it after a copy). Hidden rows
    keep the name at full width; hovering or focusing the row reveals it. */

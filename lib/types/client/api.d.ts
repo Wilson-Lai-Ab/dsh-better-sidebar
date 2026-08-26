@@ -109,6 +109,16 @@ export declare const api: {
     fsUnlink: (scope: SessionScope, path: string) => Promise<{
         ok: true;
     }>;
+    fsRename: (scope: SessionScope, from: string, to: string) => Promise<{
+        ok: true;
+        path: string;
+    }>;
+    fsReveal: (scope: SessionScope, path: string) => Promise<{
+        ok: true;
+    }>;
+    fsOpenInBrowser: (scope: SessionScope, path: string) => Promise<{
+        ok: true;
+    }>;
     gitShow: (scope: SessionScope, path: string, rev: string, signal?: AbortSignal) => Promise<{
         content: string | null;
     }>;

@@ -190,6 +190,10 @@ export declare function moveTabToEdge(state: SidebarState, fromPane: string, tab
 export declare function removeLeafAt(node: SplitNode, paneId: string): SplitNode;
 /** Close a tab; an emptied leaf is removed (unless it is the only pane). */
 export declare function closeTab(state: SidebarState, paneId: string, tabId: string): SidebarState;
+/** Keep one conversation-header tab; drop the rest. */
+export declare function closeOtherCenterTabs(state: SidebarState, tabId: string): SidebarState;
+/** Close every conversation-header tab and hide the overlay. */
+export declare function closeAllCenterTabs(state: SidebarState): SidebarState;
 /** Activate a tab in its pane (the pane's own tree). */
 export declare function activateTab(state: SidebarState, paneId: string, tabId: string): SidebarState;
 /** Update the display fields of one open tab (title / path / meta) without
@@ -236,6 +240,11 @@ export declare function splitPane(state: SidebarState, dir: 'row' | 'col'): Side
  * @returns the new state, with the diff pane active.
  */
 export declare function openDiffTab(state: SidebarState, sourcePaneId: string, tab: SidebarTab): SidebarState;
+/**
+ * Open a UI terminal in the BOTTOM panel (same strip as git history).
+ * Caps at 3 UI-owned terminals so this path cannot bypass the + menu quota.
+ */
+export declare function openTerminalInBottom(state: SidebarState, tab: SidebarTab): SidebarState;
 /**
  * Open the git history log in the BOTTOM panel (same strip as the
  * terminal). An existing instance is focused; otherwise the tab joins the

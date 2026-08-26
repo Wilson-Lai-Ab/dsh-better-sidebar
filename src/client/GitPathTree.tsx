@@ -4,19 +4,34 @@
  * their own actions and colors.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { collectDirKeys, type PathTreeNode } from './git-tree.ts'
+import { collapsedDirsForFocus, collectDirKeys, type PathTreeNode } from './git-tree.ts'
 import css from './sidebar.module.css'
 
 export function GitPathTree<T extends { path: string }>(props: {
   nodes: readonly PathTreeNode<T>[]
   renderFile: (entry: T, name: string, depth: number) => ReactNode
+  /** Repo-relative directory the explorer asked the Git panel to reveal. */
+  focusDir?: string
 }) {
-  const { nodes, renderFile } = props
+  const { nodes, renderFile, focusDir } = props
   const allKeys = useMemo(() => collectDirKeys(nodes), [nodes])
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const keysSig = allKeys.join('\0')
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    focusDir === undefined ? new Set() : collapsedDirsForFocus(nodes, focusDir),
+  )
 
-  // A newly appeared directory starts expanded (IDEA default).
   useEffect(() => {
+    if (focusDir === undefined) return
+    setCollapsed(collapsedDirsForFocus(nodes, focusDir))
+    // Re-pin when the explorer points at a new folder or the tree's
+    // directory set changes — not on every status-list remount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDir, keysSig])
+
+  // A newly appeared directory starts expanded (IDEA default), unless a
+  // focus is pinning the collapse set.
+  useEffect(() => {
+    if (focusDir !== undefined) return
     setCollapsed((current) => {
       const known = new Set(allKeys)
       let changed = false
@@ -27,7 +42,7 @@ export function GitPathTree<T extends { path: string }>(props: {
       }
       return changed ? next : current
     })
-  }, [allKeys])
+  }, [allKeys, focusDir])
 
   const toggle = useCallback((key: string) => {
     setCollapsed((current) => {

@@ -5,7 +5,7 @@
  * IDEA-style log tab next to the terminal. File rows open a right-click
  * menu (open / stage / discard / copy). Refresh is manual + on mount.
  */
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import {
   Button, IconBranchOutline16, IconCodeOutline16, IconCopyOutline16, IconRefreshOutline16,
   IconTrashOutline16, Input, Menu, Modal, writeClipboard,
@@ -13,6 +13,7 @@ import {
 import type { GitRepoInfo, GitStatusEntry, GitStatusResult, SessionScope } from './api.ts'
 import { api } from './api.ts'
 import { displayNameOf, type GitGroupBy } from './git-groups.ts'
+import { subscribeGitFocus, takeGitFocus } from './git-focus.ts'
 import { buildPathTree } from './git-tree.ts'
 import { GitPathTree } from './GitPathTree.tsx'
 import { relativeTo } from './paths.ts'
@@ -43,6 +44,7 @@ interface GitViewSnapshot {
   status: GitStatusResult | null
   branchNames: string[]
   commitMsg: string
+  focusDir?: string
 }
 
 const snapshots = new Map<string, GitViewSnapshot>()
@@ -128,6 +130,12 @@ export function GitView(props: {
   /** Branch / group-by menus portal out of the overflow-clipped panel. */
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
   const [groupMenuOpen, setGroupMenuOpen] = useState(false)
+  const [focusDir, setFocusDir] = useState<string | undefined>(cached?.focusDir)
+  const repoRootRef = useRef(repoRoot)
+  const groupByRef = useRef(groupBy)
+  const refreshRef = useRef<(nextRepo?: string) => Promise<void>>(async () => {})
+  repoRootRef.current = repoRoot
+  groupByRef.current = groupBy
 
   /** IDEA-style three-way split: staged (index X), modified (worktree Y on a
    *  tracked file), untracked (`??`). A file with both index and worktree
@@ -140,8 +148,8 @@ export function GitView(props: {
   const gitScope: SessionScope = { ...scope, repo: repoRoot }
 
   useEffect(() => {
-    snapshots.set(snapshotKey(scope), { repos, repoRoot, status, branchNames, commitMsg })
-  }, [scope.sessionId, scope.cwd, repos, repoRoot, status, branchNames, commitMsg])
+    snapshots.set(snapshotKey(scope), { repos, repoRoot, status, branchNames, commitMsg, focusDir })
+  }, [scope.sessionId, scope.cwd, repos, repoRoot, status, branchNames, commitMsg, focusDir])
 
   const refresh = useCallback(async (nextRepo?: string): Promise<void> => {
     const key = snapshotKey(scope)
@@ -172,6 +180,7 @@ export function GitView(props: {
         status: statusResult,
         branchNames: branchResult.names,
         commitMsg: snapshots.get(key)?.commitMsg ?? keep?.commitMsg ?? '',
+        focusDir: snapshots.get(key)?.focusDir ?? keep?.focusDir,
       })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -184,6 +193,7 @@ export function GitView(props: {
   }, [scope.sessionId, scope.cwd])
 
   useEffect(() => { void refresh() }, [refresh])
+  refreshRef.current = refresh
 
   /** Open the IDEA-style log in the bottom panel (same strip as the terminal). */
   const openHistory = (): void => {
@@ -321,6 +331,20 @@ export function GitView(props: {
     setGroupBy(next)
     try { localStorage.setItem(GROUP_BY_KEY, next) } catch { /* private mode */ }
   }
+
+  useEffect(() => {
+    const apply = (focus: { repo: string; dir: string }): void => {
+      setFocusDir(focus.dir)
+      if (groupByRef.current === 'none') changeGroupBy('directory')
+      if (focus.repo !== repoRootRef.current) void refreshRef.current(focus.repo)
+    }
+    const pending = takeGitFocus()
+    if (pending !== undefined) apply(pending)
+    return subscribeGitFocus(() => {
+      const next = takeGitFocus()
+      if (next !== undefined) apply(next)
+    })
+  }, [scope.sessionId, scope.cwd])
 
   const stagedTree = useMemo(() => buildPathTree(stagedEntries), [stagedEntries])
   const modifiedTree = useMemo(() => buildPathTree(modifiedEntries), [modifiedEntries])
@@ -500,6 +524,7 @@ export function GitView(props: {
                 : (
                   <GitPathTree
                     nodes={stagedTree}
+                    focusDir={focusDir}
                     renderFile={(entry, name) => renderEntry(entry, true, name)}
                   />
                 )}
@@ -519,6 +544,7 @@ export function GitView(props: {
                 : (
                   <GitPathTree
                     nodes={modifiedTree}
+                    focusDir={focusDir}
                     renderFile={(entry, name) => renderEntry(entry, false, name)}
                   />
                 )}
@@ -538,6 +564,7 @@ export function GitView(props: {
                 : (
                   <GitPathTree
                     nodes={untrackedTree}
+                    focusDir={focusDir}
                     renderFile={(entry, name) => renderEntry(entry, false, name)}
                   />
                 )}

@@ -626,6 +626,20 @@ export function openDiffTab(state: SidebarState, sourcePaneId: string, tab: Side
 }
 
 /**
+ * Open a UI terminal in the BOTTOM panel (same strip as git history).
+ * Caps at 3 UI-owned terminals so this path cannot bypass the + menu quota.
+ */
+export function openTerminalInBottom(state: SidebarState, tab: SidebarTab): SidebarState {
+  const uiCount = allLeaves(state.splits)
+    .concat(allLeaves(state.bottomSplits))
+    .flatMap(leaf => leaf.tabs)
+    .concat(state.centerTabs)
+    .filter(candidate => candidate.type === 'terminal' && !isAgentTabId(candidate.id)).length
+  if (uiCount >= 3) return state
+  return openHistoryTab(state, tab)
+}
+
+/**
  * Open the git history log in the BOTTOM panel (same strip as the
  * terminal). An existing instance is focused; otherwise the tab joins the
  * bottom tree's first leaf and the panel expands.

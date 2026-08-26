@@ -436,6 +436,78 @@ describe('session cwd resolution over the API route', () => {
     expect(result.error?.message).toMatch(/invalid working directory/)
   })
 
+  it('fs.rename moves a sibling under the session cwd and refuses a directory hop', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-rename-'))
+    const route = mount({
+      sessions: { get: () => ({ header: { cwd: workspace } }) },
+    })
+    try {
+      writeFileSync(join(workspace, 'a.txt'), 'hi\n')
+      const ok = await invoke(route, 'fs.rename', {
+        sessionId: 's-rename',
+        cwd: workspace,
+        from: join(workspace, 'a.txt'),
+        to: join(workspace, 'b.txt'),
+      })
+      expect(ok.ok).toBe(true)
+      expect(readFileSync(join(workspace, 'b.txt'), 'utf8')).toBe('hi\n')
+      mkdirSync(join(workspace, 'other'))
+      writeFileSync(join(workspace, 'c.txt'), 'x\n')
+      const hop = await invoke(route, 'fs.rename', {
+        sessionId: 's-rename',
+        cwd: workspace,
+        from: join(workspace, 'c.txt'),
+        to: join(workspace, 'other', 'c.txt'),
+      })
+      expect(hop.ok).toBe(false)
+      writeFileSync(join(workspace, 'taken.txt'), 'nope\n')
+      const clash = await invoke(route, 'fs.rename', {
+        sessionId: 's-rename',
+        cwd: workspace,
+        from: join(workspace, 'b.txt'),
+        to: join(workspace, 'taken.txt'),
+      })
+      expect(clash.ok).toBe(false)
+      expect(readFileSync(join(workspace, 'taken.txt'), 'utf8')).toBe('nope\n')
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('fs.openInBrowser refuses a path outside the session cwd', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-open-browser-'))
+    const route = mount({
+      sessions: { get: () => ({ header: { cwd: workspace } }) },
+    })
+    try {
+      const result = await invoke(route, 'fs.openInBrowser', {
+        sessionId: 's-open-browser',
+        cwd: workspace,
+        path: join(tmpdir(), 'outside.html'),
+      })
+      expect(result.ok).toBe(false)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('fs.reveal refuses a path outside the session cwd', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-sidebar-reveal-'))
+    const route = mount({
+      sessions: { get: () => ({ header: { cwd: workspace } }) },
+    })
+    try {
+      const result = await invoke(route, 'fs.reveal', {
+        sessionId: 's-reveal',
+        cwd: workspace,
+        path: join(tmpdir(), 'outside.txt'),
+      })
+      expect(result.ok).toBe(false)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
   it('pty.close releases a terminal key (and rejects a missing tab)', async () => {
     const route = mount()
     const result = await invoke(route, 'pty.close', { sessionId: 's-pty', tab: 't1' })

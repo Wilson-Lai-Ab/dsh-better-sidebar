@@ -7,4 +7,6 @@ import type { FileViewerProps } from './service.ts';
  * in the side card settings (warned); the toggle below reflects it.
  */
 export declare const HTML_IFRAME_SANDBOX = "allow-scripts allow-popups allow-downloads allow-modals";
+/** Keep/Undo bar inset: the live Replit gutter width (max 120, else width/6). */
+export declare function syncMinimapInset(host: HTMLElement, enabled: boolean): void;
 export declare function TextEditor(props: FileViewerProps): import("react").JSX.Element;

@@ -316,10 +316,9 @@ export interface BetterSidebarService {
    * Open a tab (used by external tabs and the + menu). `title` overrides
    * the descriptor's title when given (the editor tab shows the file name);
    * when the descriptor provides `createTab` it mints the tab itself and
-   * `title`/`path`/`id` are ignored. `url` lands the tab with its `path`
-   * pre-set to the URL (the browser tab's navigation seed; the caller
-   * usually pairs it with a hostname `title`). A disabled tab type is a
-   * no-op.
+   * `title`/`id` are ignored. A NEW tab still accepts `url` (browser
+   * navigation seed) or `path` (terminal cwd override); a FOCUS never
+   * overwrites the existing path. A disabled tab type is a no-op.
    *
    * `scope` (v0.12.0+) targets a specific session: when given, the open
    * lands in THAT session's sidebar state (loading it if it has none yet)
@@ -603,14 +602,15 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
         && inputTabs.some(candidate => candidate.type === tab.type && dedupeKey!(candidate) === key)
       const existedById = tabOpenIn(state, tab.id)
       const isCreation = !existedByKey && !existedById
-      // A URL seed pre-fills a NEWLY CREATED tab's path (the browser tab
-      // navigates to it on mount); a FOCUS must never have its path
-      // overwritten. An explicit seed.title still wins over a createTab-
-      // minted default title (e.g. the sidebar-browser's hostname title).
       let landed: SidebarState = next
-      if (seed.url !== undefined && isCreation) {
+      // A URL seed pre-fills a NEW tab's path (browser navigation). A path
+      // seed does the same for createTab-minted tabs (terminal cwd override).
+      // A FOCUS must never have its path overwritten. URL wins when both
+      // are given so the browser seed stays authoritative. An explicit
+      // seed.title still wins over a createTab-minted default title.
+      if (isCreation && (seed.url !== undefined || seed.path !== undefined)) {
         landed = patchTab(next, tab.id, {
-          path: seed.url,
+          path: seed.url ?? seed.path,
           ...(seed.title !== undefined ? { title: seed.title } : {}),
         })
       }

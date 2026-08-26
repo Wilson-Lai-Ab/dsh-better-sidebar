@@ -290,10 +290,9 @@ export interface BetterSidebarService {
      * Open a tab (used by external tabs and the + menu). `title` overrides
      * the descriptor's title when given (the editor tab shows the file name);
      * when the descriptor provides `createTab` it mints the tab itself and
-     * `title`/`path`/`id` are ignored. `url` lands the tab with its `path`
-     * pre-set to the URL (the browser tab's navigation seed; the caller
-     * usually pairs it with a hostname `title`). A disabled tab type is a
-     * no-op.
+     * `title`/`id` are ignored. A NEW tab still accepts `url` (browser
+     * navigation seed) or `path` (terminal cwd override); a FOCUS never
+     * overwrites the existing path. A disabled tab type is a no-op.
      *
      * `scope` (v0.12.0+) targets a specific session: when given, the open
      * lands in THAT session's sidebar state (loading it if it has none yet)

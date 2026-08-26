@@ -378,6 +378,26 @@ describe('service.openTab dedupe', () => {
     expect(state.nextBrowser).toBe(2)
   })
 
+  it('a path seed lands on a createTab-minted tab (terminal cwd override)', () => {
+    const store = createSidebarStore()
+    const service = createBetterSidebarService(store)
+    service.registerTab({
+      id: 'terminal',
+      title: () => 'Terminal',
+      createTab: (state) => ({
+        tab: { id: `terminal:${state.nextTerminal}`, type: 'terminal', title: `T${state.nextTerminal}` },
+        patch: { nextTerminal: state.nextTerminal + 1 },
+      }),
+      component: () => null,
+    })
+    store.setSession('s1')
+    service.openTab({ type: 'terminal', path: '/work/src' })
+    const state = store.getSnapshot().state!
+    const tab = allLeaves(state.splits).flatMap(l => l.tabs).find(t => t.type === 'terminal')
+    expect(tab?.id).toBe('terminal:1')
+    expect(tab?.path).toBe('/work/src')
+  })
+
   it('the descriptor title is the default when no title is given', () => {
     const store = createSidebarStore()
     const service = createBetterSidebarService(store)

@@ -22,3 +22,6 @@ export {
   type FindTreeFile,
   type FindTreeNode,
 } from './fs-find-match.ts'
+export { revealCommand, type RevealCommand } from './fs-reveal.ts'
+export { openInBrowserCommand, type OpenInBrowserCommand } from './fs-open-browser.ts'
+export { fencedRename, isRenameName } from './fs-rename.ts'

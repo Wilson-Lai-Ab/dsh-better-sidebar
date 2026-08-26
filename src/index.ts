@@ -13,6 +13,7 @@
  * session's authoritative cwd comes from the session store, and terminal
  * processes are keyed by session.
  */
+import { spawn } from 'node:child_process'
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import type { IncomingMessage } from 'node:http'
@@ -28,7 +29,7 @@ import {
   type SidebarConfig,
   type SidebarPrefs,
 } from './config.ts'
-import { isWithin, parentOf, requireAbsolute, listDirectory, rootLabel } from './explorer/index.ts'
+import { fencedRename, isWithin, parentOf, requireAbsolute, listDirectory, openInBrowserCommand, revealCommand, rootLabel } from './explorer/index.ts'
 import { decodeHtmlUrl } from './html-route.ts'
 import { extractFrameAncestors } from './browser-probe.ts'
 import { isTrustedApiRequest, isLoopbackHostname } from './trust-fence.ts'
@@ -253,6 +254,56 @@ function buildApi(
         await rm(tmp, { force: true }).catch(() => {})
         throw new SidebarError('fs-error', `cannot write "${path}": ${error instanceof Error ? error.message : String(error)}`, 400)
       }
+      return { ok: true }
+    },
+    'fs.rename': async (payload) => {
+      const { cwd } = cwdOf(payload)
+      const { from, to } = fencedRename(cwd, requireString(payload, 'from'), requireString(payload, 'to'))
+      try {
+        await stat(to)
+        throw new SidebarError('fs-error', `cannot rename "${from}": "${basename(to)}" already exists`, 400)
+      } catch (error) {
+        if (error instanceof SidebarError) throw error
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw new SidebarError('fs-error', `cannot rename "${from}": ${error instanceof Error ? error.message : String(error)}`, 400)
+        }
+      }
+      try {
+        await rename(from, to)
+      } catch (error) {
+        throw new SidebarError('fs-error', `cannot rename "${from}": ${error instanceof Error ? error.message : String(error)}`, 400)
+      }
+      return { ok: true, path: to }
+    },
+    'fs.openInBrowser': async (payload) => {
+      const { cwd } = cwdOf(payload)
+      const path = requireAbsolute(requireString(payload, 'path'))
+      if (!isWithin(cwd, path)) {
+        throw new SidebarError('forbidden', `path is outside the session workspace`, 403)
+      }
+      try {
+        await stat(path)
+      } catch (error) {
+        throw new SidebarError('not-found', `cannot open "${path}": ${error instanceof Error ? error.message : String(error)}`, 404)
+      }
+      const command = openInBrowserCommand(process.platform, path)
+      spawn(command.cmd, command.args, { detached: true, stdio: 'ignore' }).unref()
+      return { ok: true }
+    },
+    'fs.reveal': async (payload) => {
+      const { cwd } = cwdOf(payload)
+      const path = requireAbsolute(requireString(payload, 'path'))
+      if (!isWithin(cwd, path)) {
+        throw new SidebarError('forbidden', `path is outside the session workspace`, 403)
+      }
+      let isDir = false
+      try {
+        isDir = (await stat(path)).isDirectory()
+      } catch (error) {
+        throw new SidebarError('not-found', `cannot reveal "${path}": ${error instanceof Error ? error.message : String(error)}`, 404)
+      }
+      const command = revealCommand(process.platform, path, isDir)
+      spawn(command.cmd, command.args, { detached: true, stdio: 'ignore' }).unref()
       return { ok: true }
     },
     'git.repos': async (payload) => {
@@ -812,7 +863,23 @@ async function attachTerminal(
       ws.close(1008, 'either ?uuid or ?sessionId+?tab are required')
       return
     }
-    const cwd = sessionCwdOf(ctx, sessionId, url.searchParams.get('cwd') ?? undefined)
+    const sessionCwd = sessionCwdOf(ctx, sessionId, url.searchParams.get('cwd') ?? undefined)
+    const rawDir = url.searchParams.get('dir')
+    let cwd = sessionCwd
+    if (rawDir !== null && rawDir !== '') {
+      let dir: string
+      try {
+        dir = requireAbsolute(rawDir)
+      } catch {
+        ws.close(1008, `invalid terminal directory "${rawDir}"`)
+        return
+      }
+      if (!isWithin(sessionCwd, dir)) {
+        ws.close(1008, `terminal directory is outside the session workspace`)
+        return
+      }
+      cwd = dir
+    }
     const handle = ptyManager.open(sessionId, tabId, cwd, 80, 24)
     // Replay the transcript, then follow live output.
     if (handle.transcript !== '') ws.send(handle.transcript)

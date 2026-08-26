@@ -10,4 +10,6 @@ export declare function GitPathTree<T extends {
 }>(props: {
     nodes: readonly PathTreeNode<T>[];
     renderFile: (entry: T, name: string, depth: number) => ReactNode;
+    /** Repo-relative directory the explorer asked the Git panel to reveal. */
+    focusDir?: string;
 }): import("react").JSX.Element;

@@ -141,6 +141,12 @@ export interface SidebarPrefs {
      */
     reviewDoneSessionLimit: number;
     /**
+     * Whether the CodeMirror file editor shows a VS Code-style minimap on
+     * the right. On by default; the code viewer's Side card settings row
+     * can turn it off. Markdown / HTML source editing share this flag.
+     */
+    editorMinimap: boolean;
+    /**
      * Per-tab enable switches, keyed by tab descriptor id (`'explorer'`,
      * `'my-plugin:db'`). An ABSENT key means enabled — only an explicit
      * `false` disables a tab type (hidden from the + menu, `openTab` refuses,

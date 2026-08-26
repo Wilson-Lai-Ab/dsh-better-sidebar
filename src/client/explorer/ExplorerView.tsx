@@ -6,24 +6,31 @@
  *
  * Row actions: hovering a row reveals an @-reference button on the far
  * right (inserts a file chip into the composer), rows are draggable onto
- * the conversation input, and right-click opens a context menu to copy the
- * relative or absolute path (with a brief "copied" label replacing the
- * button after a successful write); file rows also offer a download action
- * (the host serves raw bytes, binary-safe).
+ * the conversation input, and right-click opens a context menu to reveal
+ * in the OS file manager, open a bottom terminal at the folder, rename,
+ * jump to the Git panel, open in the system or sidebar browser, copy the
+ * relative or absolute path (with a brief
+ * "copied" label replacing the button after a successful write); file
+ * rows also offer a download action (the host serves raw bytes, binary-safe).
  */
-import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconCodeOutline16, IconCopyOutline16, IconDownloadOutline16, IconFolderClose16, IconFolderOpen16,
-  IconRefreshOutline16, Menu, writeClipboard,
+  IconBranchOutline16, IconCodeOutline16, IconCopyOutline16, IconDownloadOutline16,
+  IconFolderClose16, IconFolderOpen16, IconRefreshOutline16, Menu, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { api, downloadUrl, type FsEntry, type FsFindHit } from '../api.ts'
+import { api, downloadUrl, type FsEntry, type FsFindHit, type GitRepoInfo } from '../api.ts'
 import { presentFindHit } from '../../explorer/match.ts'
 import { setFileDragging } from '../dom-sync.ts'
 import { encodeFileRef, FILE_REF_MIME, fileClipboardText, fileRefOf } from '../file-ref.ts'
 import { classOfKind, gitKindByPath, type GitStatusKind } from '../git-status-style.ts'
 import { relativeTo } from '../paths.ts'
 import { t } from '../locales.ts'
+import { IconGlobeOutline16, IconTerminalOutline16 } from '../icons.tsx'
+import type { SidebarStore } from '../state.ts'
+import { gitFocusOf } from './git-focus.ts'
+import { pluginBrowserHref } from './plugin-browser.ts'
+import { entryNameOf, explorerRowMenuIds, siblingPathOf, terminalCwdOf } from './row-menu.ts'
 import css from '../sidebar.module.css'
 
 interface LevelData {
@@ -68,6 +75,7 @@ function highlightName(name: string, indices: readonly number[]): ReactNode {
 export function ExplorerView(props: {
   sessionId: string
   cwd: string | undefined
+  store?: SidebarStore
   expanded: string[]
   onToggle: (path: string) => void
   onOpenFile: (path: string) => void
@@ -75,8 +83,17 @@ export function ExplorerView(props: {
   onOpenFileAbove?: (path: string) => void
   /** Insert a file chip into the composer draft. */
   onReferenceFile: (path: string) => void
+  /** Open a bottom-panel terminal at this directory. */
+  onOpenTerminal?: (dir: string) => void
+  /** Open the Git panel focused on this path's work tree. */
+  onOpenGit?: (path: string, isDir: boolean, repos: GitRepoInfo[]) => void
+  /** Open the sidebar browser tab at this GUI-origin URL. */
+  onOpenPluginBrowser?: (href: string) => void
 }) {
-  const { sessionId, cwd, expanded, onToggle, onOpenFile, onOpenFileAbove, onReferenceFile } = props
+  const {
+    sessionId, cwd, store, expanded, onToggle, onOpenFile, onOpenFileAbove, onReferenceFile,
+    onOpenTerminal, onOpenGit, onOpenPluginBrowser,
+  } = props
   const [data, setData] = useState<Record<string, LevelData>>({})
   const dataRef = useRef(data)
   const [refreshTick, setRefreshTick] = useState(0)
@@ -85,6 +102,9 @@ export function ExplorerView(props: {
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   /** Open context menu: the row path (and whether it is a directory) plus the cursor position. */
   const [rowMenu, setRowMenu] = useState<{ path: string; isDir: boolean; x: number; y: number } | null>(null)
+  const [renaming, setRenaming] = useState<{ path: string; isDir: boolean; value: string } | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [repos, setRepos] = useState<GitRepoInfo[]>([])
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<FsFindHit[] | null>(null)
   const [findError, setFindError] = useState<string | null>(null)
@@ -140,6 +160,11 @@ export function ExplorerView(props: {
       if (!cancelled) setGitKinds(gitKindByPath(status))
     }).catch(() => {
       if (!cancelled) setGitKinds(new Map())
+    })
+    void api.gitRepos({ sessionId, cwd }).then((result) => {
+      if (!cancelled) setRepos(result.repos)
+    }).catch(() => {
+      if (!cancelled) setRepos([])
     })
     return () => { cancelled = true }
   }, [sessionId, cwd, refreshTick])
@@ -223,6 +248,68 @@ export function ExplorerView(props: {
     anchor.remove()
   }
 
+  const wipeCache = (): void => {
+    dataRef.current = {}
+    setData({})
+    setRefreshTick(tick => tick + 1)
+  }
+
+  const commitRename = (from: string, nextName: string): void => {
+    const to = siblingPathOf(from, nextName)
+    if (to === undefined || to === from) {
+      setRenaming(null)
+      setRenameError(null)
+      return
+    }
+    void api.fsRename({ sessionId, cwd }, from, to).then(() => {
+      store?.reduce(s => ({
+        ...s,
+        expanded: s.expanded.map((item) => {
+          if (item === from) return to
+          if (item.startsWith(`${from}/`) || item.startsWith(`${from}\\`)) return `${to}${item.slice(from.length)}`
+          return item
+        }),
+      }))
+      setRenaming(null)
+      setRenameError(null)
+      wipeCache()
+    }).catch((error: unknown) => {
+      setRenameError(error instanceof Error ? error.message : t('renameFailed'))
+    })
+  }
+
+  const rowName = (path: string, name: string, kindClass: string | undefined): ReactNode => {
+    if (renaming?.path === path) {
+      return (
+        <input
+          className={css.explorerRename}
+          value={renaming.value}
+          autoFocus
+          aria-label={t('rename')}
+          onClick={(event) => { event.stopPropagation() }}
+          onChange={(event) => {
+            setRenaming(current => current === null ? current : { ...current, value: event.target.value })
+            setRenameError(null)
+          }}
+          onBlur={() => { commitRename(path, renaming.value) }}
+          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+            event.stopPropagation()
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitRename(path, renaming.value)
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setRenaming(null)
+              setRenameError(null)
+            }
+          }}
+        />
+      )
+    }
+    return <span className={clsx(css.explorerName, kindClass)}>{name}</span>
+  }
+
   const root = cwd
 
   const renderLevel = (dir: string, depth: number): ReactNode => {
@@ -251,7 +338,7 @@ export function ExplorerView(props: {
               style={{ paddingLeft: depth * 22 + 6 }}
               onDragStart={(event) => { startFileDrag(event, entry.path) }}
               onDragEnd={() => { setFileDragging(false) }}
-              onClick={() => { onToggle(entry.path) }}
+              onClick={() => { if (renaming?.path !== entry.path) onToggle(entry.path) }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
@@ -261,7 +348,7 @@ export function ExplorerView(props: {
               onContextMenu={(event) => { openRowMenu(event, entry.path, true) }}
             >
               {isOpen ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />}
-              <span className={clsx(css.explorerName, classOfKind(gitKinds.get(entry.path)))}>{entry.name}</span>
+              {rowName(entry.path, entry.name, classOfKind(gitKinds.get(entry.path)))}
               {rowActions(entry)}
             </div>
             {isOpen && renderLevel(entry.path, depth + 1)}
@@ -279,7 +366,7 @@ export function ExplorerView(props: {
           title={entry.path}
           onDragStart={(event) => { startFileDrag(event, entry.path) }}
           onDragEnd={() => { setFileDragging(false) }}
-          onClick={() => { onOpenFile(entry.path) }}
+          onClick={() => { if (renaming?.path !== entry.path) onOpenFile(entry.path) }}
           onDoubleClick={(event) => {
             if (onOpenFileAbove === undefined) return
             event.preventDefault()
@@ -295,7 +382,7 @@ export function ExplorerView(props: {
           onContextMenu={(event) => { openRowMenu(event, entry.path, false) }}
         >
           <IconCodeOutline16 size={14} />
-          <span className={clsx(css.explorerName, classOfKind(gitKinds.get(entry.path)))}>{entry.name}</span>
+          {rowName(entry.path, entry.name, classOfKind(gitKinds.get(entry.path)))}
           {rowActions(entry)}
         </div>
       )
@@ -410,6 +497,7 @@ export function ExplorerView(props: {
                 )}
             </div>
             {data[root] !== undefined && renderLevel(root, 1)}
+            {renameError !== null && <div className={css.explorerError}>{renameError}</div>}
           </>
         )}
       </div>
@@ -420,18 +508,79 @@ export function ExplorerView(props: {
       <Menu
         open={rowMenu !== null}
         onClose={() => { setRowMenu(null) }}
-        items={[
-          // Download applies to files only (the host route refuses directories).
-          ...(rowMenu?.isDir === false
-            ? [{ id: 'download', label: t('download'), icon: <IconDownloadOutline16 size={14} /> }]
-            : []),
-          { id: 'relative', label: t('copyRelative'), icon: <IconCopyOutline16 size={14} /> },
-          { id: 'absolute', label: t('copyAbsolute'), icon: <IconCopyOutline16 size={14} /> },
-        ]}
+        items={rowMenu === null ? [] : explorerRowMenuIds({
+          isDir: rowMenu.isDir,
+          isRoot: cwd !== undefined && rowMenu.path === cwd,
+          inGit: gitFocusOf(rowMenu.path, rowMenu.isDir, repos) !== undefined,
+        }).flatMap((id) => {
+          const pluginHref = pluginBrowserHref({
+            origin: window.location.origin,
+            sessionId,
+            cwd,
+            path: rowMenu.path,
+            isDir: rowMenu.isDir,
+          })
+          const row = {
+            reveal: { id, label: t('revealInFinder'), icon: <IconFolderOpen16 size={14} /> },
+            terminal: { id, label: t('openInTerminal'), icon: <IconTerminalOutline16 size={14} /> },
+            browser: {
+              id,
+              label: t('openInBrowser'),
+              icon: <IconGlobeOutline16 size={14} />,
+              submenu: [
+                { id: 'browser-system', label: t('openInSystemBrowser') },
+                ...(pluginHref === undefined
+                  ? []
+                  : [{ id: 'browser-plugin', label: t('openInPluginBrowser') }]),
+              ],
+            },
+            rename: { id, label: t('rename'), icon: <IconCodeOutline16 size={14} /> },
+            git: { id, label: t('openGitHere'), icon: <IconBranchOutline16 size={14} /> },
+            download: { id, label: t('download'), icon: <IconDownloadOutline16 size={14} /> },
+            relative: { id, label: t('copyRelative'), icon: <IconCopyOutline16 size={14} /> },
+            absolute: { id, label: t('copyAbsolute'), icon: <IconCopyOutline16 size={14} /> },
+          }[id]
+          if (row === undefined) return []
+          return id === 'download' || id === 'relative'
+            ? [{ type: 'separator' as const, id: `sep-${id}` }, row]
+            : [row]
+        })}
         onSelect={(id) => {
           const target = rowMenu
           if (target === null) return
           setRowMenu(null)
+          if (id === 'reveal') {
+            void api.fsReveal({ sessionId, cwd }, target.path).catch(() => { /* host surfaces its own error */ })
+            return
+          }
+          if (id === 'terminal') {
+            onOpenTerminal?.(terminalCwdOf(target.path, target.isDir))
+            return
+          }
+          if (id === 'browser-system') {
+            void api.fsOpenInBrowser({ sessionId, cwd }, target.path).catch(() => { /* host surfaces its own error */ })
+            return
+          }
+          if (id === 'browser-plugin') {
+            const href = pluginBrowserHref({
+              origin: window.location.origin,
+              sessionId,
+              cwd,
+              path: target.path,
+              isDir: target.isDir,
+            })
+            if (href !== undefined) onOpenPluginBrowser?.(href)
+            return
+          }
+          if (id === 'rename') {
+            setRenameError(null)
+            setRenaming({ path: target.path, isDir: target.isDir, value: entryNameOf(target.path) })
+            return
+          }
+          if (id === 'git') {
+            onOpenGit?.(target.path, target.isDir, repos)
+            return
+          }
           if (id === 'download') {
             downloadFile(target.path)
             return

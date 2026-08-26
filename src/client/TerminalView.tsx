@@ -79,8 +79,14 @@ function xtermTheme(): ITheme {
   }
 }
 
-export function TerminalView(props: { scope: SessionScope; tabId: string; store: SidebarStore }) {
-  const { scope, tabId, store } = props
+export function TerminalView(props: {
+  scope: SessionScope
+  tabId: string
+  store: SidebarStore
+  /** Absolute directory this tab should spawn in (explorer "Open in Terminal"). */
+  dir?: string
+}) {
+  const { scope, tabId, store, dir } = props
   const hostRef = useRef<HTMLDivElement>(null)
   const [connected, setConnected] = useState(false)
   const [fatal, setFatal] = useState<string | null>(null)
@@ -127,6 +133,7 @@ export function TerminalView(props: { scope: SessionScope; tabId: string; store:
       } else {
         const params = new URLSearchParams({ sessionId: scope.sessionId, tab: tabId })
         if (scope.cwd !== undefined && scope.cwd !== '') params.set('cwd', scope.cwd)
+        if (dir !== undefined && dir !== '') params.set('dir', dir)
         url.search = params.toString()
       }
       // Same construction the app's own downlink WebSockets use (new URL
@@ -259,7 +266,7 @@ export function TerminalView(props: { scope: SessionScope; tabId: string; store:
       term.dispose()
       connectRef.current = null
     }
-  }, [scope.sessionId, scope.cwd, tabId, store])
+  }, [scope.sessionId, scope.cwd, dir, tabId, store])
 
   return (
     <div className={css.terminalWrap}>

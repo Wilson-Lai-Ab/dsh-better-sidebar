@@ -23,6 +23,8 @@ export declare const zh: {
     newTerminal: string;
     terminalLimit: string;
     close: string;
+    closeOthers: string;
+    closeAll: string;
     collapse: string;
     expand: string;
     collapseBottomPanel: string;
@@ -150,6 +152,14 @@ export declare const zh: {
     copyRelative: string;
     copyAbsolute: string;
     download: string;
+    revealInFinder: string;
+    openInTerminal: string;
+    rename: string;
+    openGitHere: string;
+    openInBrowser: string;
+    openInSystemBrowser: string;
+    openInPluginBrowser: string;
+    renameFailed: string;
     settingsNav: string;
     settingsIntro: string;
     settingsPopupDesc: string;
@@ -200,6 +210,8 @@ export declare const zh: {
     viewerPdf: string;
     viewerMarkdown: string;
     viewerCode: string;
+    settingsEditorMinimapTitle: string;
+    settingsEditorMinimapDesc: string;
     viewerBinary: string;
     viewerHtml: string;
     browser: string;
