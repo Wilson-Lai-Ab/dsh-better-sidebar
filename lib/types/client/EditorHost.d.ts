@@ -7,4 +7,5 @@ export declare function EditorHost(props: {
     scope: SessionScope;
     path: string;
     title: string;
+    visible?: boolean;
 }): import("react").JSX.Element;

@@ -39,6 +39,8 @@ export declare const zh: {
     preview: string;
     edit: string;
     refresh: string;
+    locateInExplorer: string;
+    collapseExplorer: string;
     save: string;
     saved: string;
     unsaved: string;

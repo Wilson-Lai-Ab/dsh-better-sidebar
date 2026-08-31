@@ -292,6 +292,10 @@ export declare function setWidth(state: SidebarState, width: number): SidebarSta
 export declare function setBottomHeight(state: SidebarState, height: number): SidebarState;
 /** Toggle a directory in the explorer expansion set. */
 export declare function toggleExpanded(state: SidebarState, path: string): SidebarState;
+/** Expand every ancestor directory so a workspace file is visible. */
+export declare function expandExplorerToPath(state: SidebarState, cwd: string, path: string): SidebarState;
+/** Collapse every expanded explorer directory. */
+export declare function collapseAllExplorer(state: SidebarState): SidebarState;
 /** Adjust one split divider: `i` is the left/top child index, delta in fractions. */
 export declare function resizeSplit(node: SplitNode, splitId: string, index: number, delta: number): SplitNode;
 /** State-level {@link resizeSplit} route: the divider may live in either

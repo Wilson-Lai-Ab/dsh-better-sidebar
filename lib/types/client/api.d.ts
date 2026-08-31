@@ -219,3 +219,12 @@ export declare function downloadUrl(scope: SessionScope, path: string): string;
  *  fully encoded so the previewed page's relative assets resolve back into
  *  the same route with the session scope intact. */
 export declare function htmlUrl(scope: SessionScope, path: string): string;
+/**
+ * HTML preview src with a cache-busting query. Relative assets still
+ * resolve against the path-encoded document URL (the query is dropped).
+ * The stamp changes when the saved file content changes so the iframe
+ * reloads the new page.
+ */
+export declare function htmlPreviewSrc(scope: SessionScope, path: string, stamp?: string): string;
+/** Short fingerprint so the iframe src query stays small. */
+export declare function htmlPreviewStamp(content: string): string;

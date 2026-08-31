@@ -217,6 +217,8 @@ export interface FileViewerProps {
     mediaUrl?: string;
     /** custom load() return value (fetchStrategy='custom'). */
     customData?: unknown;
+    /** Whether this viewer is the active center/sidebar pane (HTML scroll restore). */
+    visible?: boolean;
 }
 /** Describes one file previewer (builtins register themselves too). */
 export interface FileViewerDescriptor {

@@ -43,3 +43,7 @@ export declare const IconMarkdownOutline16: ({ size, className }: IconProps) => 
 export declare const IconHtmlOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
 /** Browser tab glyph: a globe with meridians. */
 export declare const IconGlobeOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
+/** Locate the current preview file in the explorer (crosshair). */
+export declare const IconLocateOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
+/** Collapse every expanded explorer directory. */
+export declare const IconCollapseAllOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;

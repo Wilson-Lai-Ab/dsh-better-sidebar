@@ -37,8 +37,8 @@ type EditorLoad =
   | { status: 'ready'; viewer: FileViewerDescriptor; content?: string; truncated?: boolean; mediaUrl?: string; customData?: unknown }
   | { status: 'binary' }
 
-export function EditorHost(props: { ctx: Context; store: SidebarStore; scope: SessionScope; path: string; title: string }) {
-  const { ctx, store, scope, path, title } = props
+export function EditorHost(props: { ctx: Context; store: SidebarStore; scope: SessionScope; path: string; title: string; visible?: boolean }) {
+  const { ctx, store, scope, path, title, visible } = props
   const [load, setLoad] = useState<EditorLoad>({ status: 'loading' })
   const rootRef = useRef<HTMLDivElement>(null)
   const { latest } = useSessionEdits(ctx, scope.sessionId, scope.cwd)
@@ -47,6 +47,8 @@ export function EditorHost(props: { ctx: Context; store: SidebarStore; scope: Se
   const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision)
   const fileDecision = review === undefined ? undefined : decisionOf(scope.sessionId, review.path, review)
   const seenDecision = useRef<{ path: string; tick: number; decision?: string }>({ path: '', tick: -1 })
+  const writeStamp = review === undefined ? '' : `${review.seq ?? ''}:${review.turn ?? ''}:${review.kind}`
+  const seenWrite = useRef<{ path: string; stamp: string }>({ path: '', stamp: '' })
 
   const applyContent = (next?: string | null): void => {
     if (next === undefined) return
@@ -128,6 +130,27 @@ export function EditorHost(props: { ctx: Context; store: SidebarStore; scope: Se
     return () => { cancelled = true }
   }, [fileDecision, reviewTick, path, review, scope])
 
+  // Agent rewrite of this file: re-read disk so the HTML iframe (cache-busted
+  // by content) and markdown preview show the new page, not the stale one.
+  useEffect(() => {
+    if (writeStamp === '') return
+    const prev = seenWrite.current
+    if (prev.path !== path) {
+      seenWrite.current = { path, stamp: writeStamp }
+      return
+    }
+    if (prev.stamp === writeStamp) return
+    seenWrite.current = { path, stamp: writeStamp }
+    let cancelled = false
+    void api.fsRead(scope, path).then((result) => {
+      if (cancelled) return
+      applyContent(result.kind === 'text' ? result.content : '')
+    }).catch(() => {
+      if (!cancelled) applyContent('')
+    })
+    return () => { cancelled = true }
+  }, [writeStamp, path, scope])
+
   useEffect(() => {
     const root = rootRef.current
     if (root === null) return
@@ -176,6 +199,7 @@ export function EditorHost(props: { ctx: Context; store: SidebarStore; scope: Se
         truncated: load.truncated,
         mediaUrl: load.mediaUrl,
         customData: load.customData,
+        visible,
       })}
     </div>
   )

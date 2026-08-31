@@ -179,8 +179,12 @@ describe('center preview fallback tab strip (fresh conversation)', () => {
       .find(tab => tab.textContent === t('conversationTab'))
     expect(chatTab).toBeDefined()
     act(() => { (chatTab as HTMLElement).click() })
-    // The preview is hidden (centerActive → null) but the file stays docked.
+    // The preview is hidden (centerActive → null) but the file stays docked
+    // and its body stays mounted so preview/edit survives 对话 ↔ file tab.
     expect(store.getSnapshot().state!.centerActive).toBeNull()
     expect(store.getSnapshot().state!.centerTabs).toHaveLength(1)
+    const overlay = container.querySelector('[class*="centerPreviewHidden"]')
+    expect(overlay).not.toBeNull()
+    expect(overlay!.textContent).toContain('preview-body')
   })
 })

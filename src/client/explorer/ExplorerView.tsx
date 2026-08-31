@@ -13,7 +13,7 @@
  * "copied" label replacing the button after a successful write); file
  * rows also offer a download action (the host serves raw bytes, binary-safe).
  */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   IconBranchOutline16, IconCodeOutline16, IconCopyOutline16, IconDownloadOutline16,
@@ -23,7 +23,11 @@ import { api, downloadUrl, type FsEntry, type FsFindHit, type GitRepoInfo } from
 import { presentFindHit } from '../../explorer/match.ts'
 import { setFileDragging } from '../dom-sync.ts'
 import { encodeFileRef, FILE_REF_MIME, fileClipboardText, fileRefOf } from '../file-ref.ts'
-import { classOfKind, gitKindByPath, type GitStatusKind } from '../git-status-style.ts'
+import type { Context } from '../../context-types.ts'
+import { classOfKind, explorerKindOf, gitKindByPath, sessionKindByPath, type GitStatusKind } from '../git-status-style.ts'
+import { localHistoryFaceOf, sessionEditsFromLhPending, type LhPendingKind } from '../lh-pending.ts'
+import { pendingEdits } from '../review/review-filter.ts'
+import { useSessionEdits } from '../review/use-session-edits.ts'
 import { ancestorDirsOf, relativeTo, sameFsPath } from '../paths.ts'
 import { t } from '../locales.ts'
 import { IconCollapseAllOutline16, IconGlobeOutline16, IconLocateOutline16, IconTerminalOutline16 } from '../icons.tsx'
@@ -75,6 +79,7 @@ function highlightName(name: string, indices: readonly number[]): ReactNode {
 }
 
 export function ExplorerView(props: {
+  ctx?: Context
   sessionId: string
   cwd: string | undefined
   store?: SidebarStore
@@ -93,7 +98,7 @@ export function ExplorerView(props: {
   onOpenPluginBrowser?: (href: string) => void
 }) {
   const {
-    sessionId, cwd, store, expanded, onToggle, onOpenFile, onOpenFileAbove, onReferenceFile,
+    ctx, sessionId, cwd, store, expanded, onToggle, onOpenFile, onOpenFileAbove, onReferenceFile,
     onOpenTerminal, onOpenGit, onOpenPluginBrowser,
   } = props
   const [data, setData] = useState<Record<string, LevelData>>({})
@@ -101,6 +106,41 @@ export function ExplorerView(props: {
   const bodyRef = useRef<HTMLDivElement>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [gitKinds, setGitKinds] = useState<Map<string, GitStatusKind>>(() => new Map())
+  const [lhEdits, setLhEdits] = useState<{ path: string; kind: LhPendingKind }[] | null>(null)
+  const sessionEdits = useSessionEdits(ctx ?? ({} as Context), sessionId, cwd)
+  const builtinEdits = useMemo(
+    () => pendingEdits(sessionId, sessionEdits.latest).map(edit => ({ path: edit.path, kind: edit.kind })),
+    [sessionId, sessionEdits.latest, sessionEdits.pending],
+  )
+  const sessionKinds = useMemo(
+    () => sessionKindByPath(cwd, lhEdits ?? builtinEdits),
+    [cwd, lhEdits, builtinEdits],
+  )
+
+  useEffect(() => {
+    const face = localHistoryFaceOf(ctx)
+    if (face === undefined) {
+      setLhEdits(null)
+      return
+    }
+    let cancelled = false
+    const load = (): void => {
+      void face.listReview(sessionId, cwd).then((result) => {
+        if (cancelled || !result.ok) return
+        setLhEdits(sessionEditsFromLhPending(result.value?.records ?? []))
+      }).catch(() => {
+        if (!cancelled) setLhEdits(null)
+      })
+    }
+    load()
+    const timer = window.setInterval(load, 2500)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [ctx, sessionId, cwd, sessionEdits.pending])
+  const rowKind = (path: string, isDir: boolean): GitStatusKind | undefined =>
+    explorerKindOf(path, sessionKinds, gitKinds, isDir)
   /** The row whose path was just copied ("copied" label replaces its button). */
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   /** Open context menu: the row path (and whether it is a directory) plus the cursor position. */
@@ -372,7 +412,7 @@ export function ExplorerView(props: {
               onContextMenu={(event) => { openRowMenu(event, entry.path, true) }}
             >
               {isOpen ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />}
-              {rowName(entry.path, entry.name, classOfKind(gitKinds.get(entry.path)))}
+              {rowName(entry.path, entry.name, classOfKind(rowKind(entry.path, true)))}
               {rowActions(entry)}
             </div>
             {isOpen && renderLevel(entry.path, depth + 1)}
@@ -407,7 +447,7 @@ export function ExplorerView(props: {
           onContextMenu={(event) => { openRowMenu(event, entry.path, false) }}
         >
           <IconCodeOutline16 size={14} />
-          {rowName(entry.path, entry.name, classOfKind(gitKinds.get(entry.path)))}
+          {rowName(entry.path, entry.name, classOfKind(rowKind(entry.path, false)))}
           {rowActions(entry)}
         </div>
       )
@@ -530,7 +570,7 @@ export function ExplorerView(props: {
               onContextMenu={(event) => { openRowMenu(event, root, true) }}
             >
               <IconFolderOpen16 size={14} />
-              <span className={clsx(css.explorerName, classOfKind(gitKinds.get(root)))}>{baseName(root)}</span>
+              <span className={clsx(css.explorerName, classOfKind(rowKind(root, true)))}>{baseName(root)}</span>
               {copiedPath === root
                 ? <span className={css.explorerCopied}>{t('copied')}</span>
                 : (

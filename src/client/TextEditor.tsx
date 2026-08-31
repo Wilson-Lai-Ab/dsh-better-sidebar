@@ -17,7 +17,7 @@ import { Decoration, type DecorationSet, EditorView as CodeMirrorView, keymap, l
 import { showMinimap } from '@replit/codemirror-minimap'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { IconCheckOutline16, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { api, htmlUrl } from './api.ts'
+import { api, htmlPreviewSrc } from './api.ts'
 import { languageForPath } from './lang.ts'
 import { cmSurfaceTheme, CmThemeCompartment } from './cm-themes.ts'
 import { isDarkScheme, subscribeColorScheme } from './theme.ts'
@@ -49,12 +49,12 @@ import {
   useSessionEdits,
   type ReviewHunk,
 } from './review/index.ts'
+import { rememberViewMode, resolveViewMode, type ViewMode } from './editor-view-mode.ts'
+import { htmlScrollRestoreMessage, parseHtmlScrollMessage } from '../html-scroll-bridge.ts'
+import { previewScrollOf, rememberPreviewScroll } from './preview-scroll.ts'
 import { t } from './locales.ts'
 import type { FileViewerProps } from './service.ts'
 import css from './sidebar.module.css'
-
-/** Previewable files (rendered output vs source editing). */
-type ViewMode = 'preview' | 'edit'
 
 const setRevealEffect = StateEffect.define<RevealRange | null>()
 const revealLineDeco = Decoration.line({ class: 'dsh-reveal-line' })
@@ -144,7 +144,16 @@ function minimapExtensions(enabled: boolean): Extension[] {
 
 export function TextEditor(props: FileViewerProps) {
   const { ctx, scope, path, viewerId, content, truncated } = props
-  const [mode, setMode] = useState<ViewMode>('preview')
+  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision, reviewRevision)
+  const { latest } = useSessionEdits(ctx, scope.sessionId, scope.cwd)
+  const absPath = resolveSidebarPath(scope.cwd, path)
+  const sessionEdit = latest.find(edit => edit.path === absPath || edit.path === path)
+  const [mode, setMode] = useState<ViewMode>(() => resolveViewMode({
+    sessionId: scope.sessionId,
+    path,
+    viewerId,
+    hasReview: sessionEdit !== undefined,
+  }))
   /** The editor's current text (null while clean); preview renders this. */
   const [draft, setDraft] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -164,15 +173,14 @@ export function TextEditor(props: FileViewerProps) {
   const popupRef = useRef<SelectionPopup | null>(null)
   /** The markdown preview container (selection-containment + line lookup). */
   const mdRef = useRef<HTMLDivElement>(null)
+  const htmlRef = useRef<HTMLIFrameElement>(null)
+  const paneVisible = props.visible !== false
+  const restoringHtmlScroll = useRef(false)
   /** Last chip-opened span, so markdown preview can mark the same text. */
   const [reveal, setReveal] = useState<RevealRange | null>(null)
   const [hunks, setHunks] = useState<readonly ReviewHunk[]>([])
   const [hunkHover, setHunkHover] = useState<{ hunk: ReviewHunk; top: number } | null>(null)
   const [hunkTick, setHunkTick] = useState(0)
-  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision, reviewRevision)
-  const { latest } = useSessionEdits(ctx, scope.sessionId, scope.cwd)
-  const absPath = resolveSidebarPath(scope.cwd, path)
-  const sessionEdit = latest.find(edit => edit.path === absPath || edit.path === path)
   const fileDecided = sessionEdit !== undefined && decisionOf(scope.sessionId, sessionEdit.path, sessionEdit) !== undefined
   const openedDecided = useRef<{ path: string; decided: boolean } | null>(null)
   if (openedDecided.current === null || openedDecided.current.path !== absPath) {
@@ -236,11 +244,21 @@ export function TextEditor(props: FileViewerProps) {
 
   useEffect(() => subscribeColorScheme(() => { setDark(isDarkScheme()) }), [])
 
+  const pickMode = (next: ViewMode): void => {
+    rememberViewMode(scope.sessionId, path, next)
+    setMode(next)
+  }
+
   // A new file (tab switch) starts clean. Markdown / HTML with pending
-  // review open in source so the user can see paints and Keep / Undo.
+  // review open in source so the user can see paints and Keep / Undo —
+  // unless they already picked Preview / Edit for this path.
   useEffect(() => {
-    const reviewSource = sessionEdit !== undefined
-    setMode(reviewSource && (viewerId === 'markdown' || viewerId === 'html') ? 'edit' : 'preview')
+    setMode(resolveViewMode({
+      sessionId: scope.sessionId,
+      path,
+      viewerId,
+      hasReview: sessionEdit !== undefined,
+    }))
     setDraft(null)
     setDirty(false)
     setSaveState('idle')
@@ -549,7 +567,7 @@ export function TextEditor(props: FileViewerProps) {
       const range = takeReveal(path)
       if (range === undefined) return
       setReveal(range)
-      if (viewerId === 'html') setMode('edit')
+      if (viewerId === 'html') pickMode('edit')
       const go = (): void => {
         const view = viewRef.current
         if (view === null) {
@@ -605,6 +623,54 @@ export function TextEditor(props: FileViewerProps) {
       node = walker.nextNode()
     }
   }, [reveal, mode, viewerId, content])
+
+  useEffect(() => {
+    if (mode !== 'preview' || viewerId !== 'markdown') return
+    const host = mdRef.current
+    if (host === null) return
+    const saved = previewScrollOf(scope.sessionId, path)
+    if (saved !== undefined) {
+      host.scrollTop = saved.top
+      host.scrollLeft = saved.left
+    }
+    const onScroll = (): void => {
+      rememberPreviewScroll(scope.sessionId, path, { top: host.scrollTop, left: host.scrollLeft })
+    }
+    host.addEventListener('scroll', onScroll, { passive: true })
+    return () => { host.removeEventListener('scroll', onScroll) }
+  }, [mode, viewerId, path, scope.sessionId, content])
+
+  useEffect(() => {
+    if (viewerId !== 'html') return
+    const onMessage = (event: MessageEvent): void => {
+      if (event.source !== htmlRef.current?.contentWindow) return
+      const pos = parseHtmlScrollMessage(event.data)
+      if (pos === undefined) return
+      // Chat hide resets iframe scroll to 0 and would wipe the saved offset.
+      if (!paneVisible || restoringHtmlScroll.current) return
+      rememberPreviewScroll(scope.sessionId, path, pos)
+    }
+    window.addEventListener('message', onMessage)
+    return () => { window.removeEventListener('message', onMessage) }
+  }, [viewerId, path, scope.sessionId, paneVisible])
+
+  useEffect(() => {
+    if (viewerId !== 'html' || mode !== 'preview' || !paneVisible) return
+    const pos = previewScrollOf(scope.sessionId, path)
+    if (pos === undefined) return
+    restoringHtmlScroll.current = true
+    const restore = (): void => {
+      htmlRef.current?.contentWindow?.postMessage(htmlScrollRestoreMessage(pos), '*')
+    }
+    restore()
+    const timers = [16, 50, 120, 250].map(ms => window.setTimeout(restore, ms))
+    const done = window.setTimeout(() => { restoringHtmlScroll.current = false }, 400)
+    return () => {
+      for (const id of timers) window.clearTimeout(id)
+      window.clearTimeout(done)
+      restoringHtmlScroll.current = false
+    }
+  }, [viewerId, mode, paneVisible, path, scope.sessionId])
 
   const save = (): void => {
     const view = viewRef.current
@@ -677,14 +743,14 @@ export function TextEditor(props: FileViewerProps) {
             <button
               type="button"
               className={clsx(css.editorModeButton, mode === 'preview' && css.editorModeActive)}
-              onClick={() => { setMode('preview') }}
+              onClick={() => { pickMode('preview') }}
             >
               {t('preview')}
             </button>
             <button
               type="button"
               className={clsx(css.editorModeButton, mode === 'edit' && css.editorModeActive)}
-              onClick={() => { setMode('edit') }}
+              onClick={() => { pickMode('edit') }}
             >
               {t('edit')}
             </button>
@@ -771,12 +837,19 @@ export function TextEditor(props: FileViewerProps) {
               cross-origin by construction). The preview shows the SAVED
               file; the draft is only visible in edit mode. */}
           <iframe
+            ref={htmlRef}
             className={css.editorHtml}
-            src={htmlUrl(scope, path)}
+            src={htmlPreviewSrc(scope, path, content)}
             sandbox={htmlNoSandbox ? undefined : HTML_IFRAME_SANDBOX}
             referrerPolicy="no-referrer"
             allow=""
             title={path}
+            onLoad={() => {
+              const pos = previewScrollOf(scope.sessionId, path)
+              const win = htmlRef.current?.contentWindow
+              if (pos === undefined || win === null || win === undefined) return
+              win.postMessage(htmlScrollRestoreMessage(pos), '*')
+            }}
           />
         </>
       )}

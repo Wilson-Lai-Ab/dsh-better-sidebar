@@ -1,7 +1,8 @@
 /**
  * Shared git-status coloring for the Git panel and the explorer.
  * One letter (index, else worktree) picks the color; directories inherit
- * the strongest color of any descendant change.
+ * the strongest color of any descendant change. Pending conversation
+ * writes overlay git in the explorer (sessionKindByPath + explorerKindOf).
  */
 import { useEffect, useState } from 'react'
 import type { SidebarTab } from './state.ts'
@@ -75,6 +76,16 @@ function parentAbs(path: string): string | undefined {
   return path.slice(0, at)
 }
 
+function paintAncestors(map: Map<string, GitStatusKind>, abs: string, kind: GitStatusKind, root: string): void {
+  map.set(abs, stronger(map.get(abs), kind))
+  let dir = parentAbs(abs)
+  while (dir !== undefined && (dir === root || dir.startsWith(`${root}/`))) {
+    map.set(dir, stronger(map.get(dir), kind))
+    if (dir === root) break
+    dir = parentAbs(dir)
+  }
+}
+
 /** Absolute-path → status kind, including ancestor directories. */
 export function gitKindByPath(status: GitStatusResult | undefined): Map<string, GitStatusKind> {
   const map = new Map<string, GitStatusKind>()
@@ -85,16 +96,58 @@ export function gitKindByPath(status: GitStatusResult | undefined): Map<string, 
     if (kind === undefined) continue
     const rel = entry.path.replace(/\\/g, '/')
     const abs = joinAbs(root, rel)
-    map.set(abs, stronger(map.get(abs), kind))
+    paintAncestors(map, abs, kind, root)
     map.set(rel, stronger(map.get(rel), kind))
-    let dir = parentAbs(abs)
-    while (dir !== undefined && (dir === root || dir.startsWith(`${root}/`))) {
-      map.set(dir, stronger(map.get(dir), kind))
-      if (dir === root) break
-      dir = parentAbs(dir)
+  }
+  return map
+}
+
+function sessionGitKind(kind: 'add' | 'edit' | 'delete'): GitStatusKind {
+  if (kind === 'add') return 'add'
+  if (kind === 'delete') return 'del'
+  return 'mod'
+}
+
+/**
+ * Pending conversation writes → git color kinds, bubbling to ancestor
+ * folders so the explorer can tint directories the agent touched.
+ */
+export function sessionKindByPath(
+  cwd: string | undefined,
+  edits: readonly { path: string; kind: 'add' | 'edit' | 'delete' }[],
+): Map<string, GitStatusKind> {
+  const map = new Map<string, GitStatusKind>()
+  if (cwd === undefined || cwd === '') return map
+  const root = normalizeAbs(cwd)
+  for (const edit of edits) {
+    const abs = normalizeAbs(edit.path)
+    const kind = sessionGitKind(edit.kind)
+    paintAncestors(map, abs, kind, root)
+    if (abs.startsWith(`${root}/`)) {
+      const rel = abs.slice(root.length + 1)
+      map.set(rel, stronger(map.get(rel), kind))
     }
   }
   return map
+}
+
+function kindAt(map: ReadonlyMap<string, GitStatusKind>, path: string): GitStatusKind | undefined {
+  return map.get(path) ?? map.get(normalizeAbs(path))
+}
+
+/**
+ * Files keep git color so unaccepted untracked/added rows stay green/red.
+ * Folders use pending conversation color; after Keep they fall back to git
+ * (uncommitted agent writes still show the git-panel blue).
+ */
+export function explorerKindOf(
+  path: string,
+  session: ReadonlyMap<string, GitStatusKind>,
+  git: ReadonlyMap<string, GitStatusKind>,
+  isDir = false,
+): GitStatusKind | undefined {
+  if (isDir) return kindAt(session, path) ?? kindAt(git, path)
+  return kindAt(git, path) ?? kindAt(session, path)
 }
 
 /** Workspace path a tab should color from (editor / worktree / commit file). */

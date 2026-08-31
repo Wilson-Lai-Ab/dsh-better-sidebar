@@ -17,3 +17,10 @@
  * relative text keeps the caller's own casing.
  */
 export declare function relativeTo(cwd: string, path: string): string;
+/** Whether two explorer paths name the same file (separators + letter case). */
+export declare function sameFsPath(a: string | undefined, b: string | undefined): boolean;
+/**
+ * Absolute directories that must be expanded to show `path` in the explorer.
+ * Empty when the file sits in the workspace root; null when it is outside.
+ */
+export declare function ancestorDirsOf(cwd: string, path: string): string[] | null;

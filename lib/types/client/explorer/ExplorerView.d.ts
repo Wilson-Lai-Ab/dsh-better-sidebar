@@ -1,6 +1,8 @@
 import { type GitRepoInfo } from '../api.ts';
-import type { SidebarStore } from '../state.ts';
+import type { Context } from '../../context-types.ts';
+import { type SidebarStore } from '../state.ts';
 export declare function ExplorerView(props: {
+    ctx?: Context;
     sessionId: string;
     cwd: string | undefined;
     store?: SidebarStore;

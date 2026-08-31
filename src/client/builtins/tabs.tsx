@@ -14,6 +14,8 @@ import { gitFocusOf } from '../explorer/git-focus.ts'
 import { t } from '../locales.ts'
 import { openSidebarFile, openSidebarFileAbove } from '../intercept.tsx'
 import { ExplorerView } from '../explorer/index.ts'
+import { forgetViewMode } from '../editor-view-mode.ts'
+import { forgetPreviewScroll } from '../preview-scroll.ts'
 import { EditorHost } from '../EditorHost.tsx'
 import { lazyChunkComponent } from '../lazy-chunk.tsx'
 import { GitView } from '../GitView.tsx'
@@ -77,8 +79,14 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
       order: -1,
       hidden: true,
       dedupeKey: (tab) => tab.path,
-      component: ({ ctx, store, scope, tab }) => (
-        <EditorHost ctx={ctx} store={store} scope={scope} path={tab.path ?? ''} title={tab.title} />
+      onClose: (tab, scope) => {
+        if (tab.path !== undefined && tab.path !== '') {
+          forgetViewMode(scope.sessionId, tab.path)
+          forgetPreviewScroll(scope.sessionId, tab.path)
+        }
+      },
+      component: ({ ctx, store, scope, tab, visible }) => (
+        <EditorHost ctx={ctx} store={store} scope={scope} path={tab.path ?? ''} title={tab.title} visible={visible} />
       ),
     },
     {
@@ -89,6 +97,7 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
       single: true,
       component: ({ ctx, store, scope, expanded, onToggleDir, onReferenceFile }) => (
         <ExplorerView
+          ctx={ctx}
           sessionId={scope.sessionId}
           cwd={scope.cwd}
           store={store}

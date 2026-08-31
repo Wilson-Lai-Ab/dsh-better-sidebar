@@ -600,6 +600,13 @@
   border-top: 1px solid var(--dsw-alias-border-l2);
 }
 
+/* Chat tab selected: stay in place, just invisible. visibility/display/
+   transform-offscreen all reset HTML-preview iframe scroll in Chrome. */
+.centerPreviewHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 :global([data-dsh-center-tab]) {
   /* Host tab is padding 0 0 11px + 16px line — center-align drops × below the title. */
   display: inline-flex;
@@ -716,12 +723,32 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.centerPreviewBody {
+/* Stack every docked file in the same slot. Inactive panes stay mounted
+   (scroll / preview mode) and are hidden with visibility, not display. */
+.centerPreviewBodies {
   flex: 1;
   min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.centerPreviewBody {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.centerPreviewBodyActive {
+  visibility: visible;
+  z-index: 1;
+}
+
+.centerPreviewBodyInactive {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* The host 对话 / 轨迹 strip already shows the file name; the in-body
@@ -1503,6 +1530,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.reviewName.gitAdded,
+.reviewPath.gitAdded,
+.reviewKind.gitAdded { color: var(--dsw-alias-state-success-primary); }
+.reviewName.gitModified,
+.reviewPath.gitModified,
+.reviewKind.gitModified { color: var(--dsw-alias-state-business-primary); }
+.reviewName.gitDeleted,
+.reviewPath.gitDeleted,
+.reviewKind.gitDeleted { color: var(--dsw-alias-label-tertiary); }
+.reviewKind.gitAdded { background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent); }
+.reviewKind.gitModified { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 16%, transparent); }
+.reviewKind.gitDeleted { background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 16%, transparent); }
 
 .reviewActions {
   flex: none;

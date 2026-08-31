@@ -263,3 +263,25 @@ function fileUrl(scope: SessionScope, path: string, download: boolean): string {
 export function htmlUrl(scope: SessionScope, path: string): string {
   return encodeHtmlUrl(scope.sessionId, path)
 }
+
+/**
+ * HTML preview src with a cache-busting query. Relative assets still
+ * resolve against the path-encoded document URL (the query is dropped).
+ * The stamp changes when the saved file content changes so the iframe
+ * reloads the new page.
+ */
+export function htmlPreviewSrc(scope: SessionScope, path: string, stamp?: string): string {
+  const url = htmlUrl(scope, path)
+  if (stamp === undefined || stamp === '') return url
+  return `${url}?v=${encodeURIComponent(htmlPreviewStamp(stamp))}`
+}
+
+/** Short fingerprint so the iframe src query stays small. */
+export function htmlPreviewStamp(content: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${content.length.toString(36)}-${(hash >>> 0).toString(36)}`
+}

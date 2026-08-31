@@ -94,7 +94,7 @@ function FileRows(props: {
                   <span className={clsx(css.reviewName, color, edit.kind === 'delete' && css.gitDeletedText)}>
                     {baseName(edit.path)}
                   </span>
-                  <span className={css.reviewPath}>{edit.path}</span>
+                  <span className={clsx(css.reviewPath, color, edit.kind === 'delete' && css.gitDeletedText)}>{edit.path}</span>
                 </button>
                 <div className={css.reviewActions}>
                   {decision === undefined ? (

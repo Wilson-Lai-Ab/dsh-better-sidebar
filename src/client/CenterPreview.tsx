@@ -5,7 +5,7 @@
  * min-height auto), so explorer/editor children collapse. This overlay
  * sits on the conversation column and renders the tab body ourselves.
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../context-types.ts'
@@ -17,6 +17,7 @@ import {
 } from './state.ts'
 import { classOfKind, latestGitKinds, workspacePathOfTab } from './git-status-style.ts'
 import { observeHostHeader, scheduleGuardedFrame } from './dom-sync.ts'
+import { isCenterBodyShown, resolveCenterShown } from './center-preview-mount.ts'
 import { t } from './locales.ts'
 import { effectiveTokenValue, isDarkScheme } from './theme.ts'
 import css from './sidebar.module.css'
@@ -327,14 +328,21 @@ export function CenterPreview(props: {
   const { ctx, store, state, sessionId, cwd, left, right, top, bottom, onReferenceFile, onTabMenu } = props
   const hostHeaderPresent = useHostHeaderTablistPresent()
   const activeId = state.centerActive
-  if (activeId === null || state.centerTabs.length === 0) return null
-  const tab = state.centerTabs.find(candidate => candidate.id === activeId)
-  if (tab === undefined) return null
+  const lastShownId = useRef<string | null>(null)
+  const shown = resolveCenterShown(
+    state.centerTabs.map(tab => tab.id),
+    activeId,
+    lastShownId.current,
+  )
+  lastShownId.current = shown.lastId
+  if (state.centerTabs.length === 0) return null
+  const chatting = shown.chatting
 
   return (
     <div
-      className={css.centerPreview}
+      className={clsx(css.centerPreview, chatting && css.centerPreviewHidden)}
       style={{ left, right: window.innerWidth - right, top, bottom }}
+      aria-hidden={chatting}
     >
       {/*
         Fallback tab strip for a FRESH conversation (no host 对话 / 轨迹
@@ -384,20 +392,31 @@ export function CenterPreview(props: {
         ))}
       </div>
       )}
-      <div className={css.centerPreviewBody}>
-        <TabContent
-          tab={tab}
-          sessionId={sessionId}
-          cwd={cwd}
-          expanded={state.expanded}
-          onToggleDir={(path) => { store.reduce(s => toggleExpanded(s, path)) }}
-          onReferenceFile={onReferenceFile}
-          ctx={ctx}
-          store={store}
-          visible
-          onSubagentJump={() => { /* session jump stays in the sidebar topology */ }}
-          onOpenDiff={(diffTab: SidebarTab) => { store.reduce(s => openDiffTab(s, CENTER_PANE_ID, diffTab)) }}
-        />
+      <div className={css.centerPreviewBodies}>
+        {state.centerTabs.map((candidate) => {
+          const shownBody = isCenterBodyShown(candidate.id, shown.shownId)
+          return (
+            <div
+              key={candidate.id}
+              className={clsx(css.centerPreviewBody, shownBody ? css.centerPreviewBodyActive : css.centerPreviewBodyInactive)}
+              aria-hidden={!shownBody}
+            >
+              <TabContent
+                tab={candidate}
+                sessionId={sessionId}
+                cwd={cwd}
+                expanded={state.expanded}
+                onToggleDir={(path) => { store.reduce(s => toggleExpanded(s, path)) }}
+                onReferenceFile={onReferenceFile}
+                ctx={ctx}
+                store={store}
+                visible={!chatting && shownBody}
+                onSubagentJump={() => { /* session jump stays in the sidebar topology */ }}
+                onOpenDiff={(diffTab: SidebarTab) => { store.reduce(s => openDiffTab(s, CENTER_PANE_ID, diffTab)) }}
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )

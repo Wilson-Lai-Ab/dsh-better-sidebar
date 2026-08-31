@@ -31,6 +31,7 @@ import {
 } from './config.ts'
 import { FIND_LIMIT_DEFAULT, fencedRename, findFiles, isWithin, parentOf, requireAbsolute, listDirectory, openInBrowserCommand, revealCommand, rootLabel } from './explorer/index.ts'
 import { decodeHtmlUrl } from './html-route.ts'
+import { injectHtmlScrollBridge } from './html-scroll-bridge.ts'
 import { extractFrameAncestors } from './browser-probe.ts'
 import { isTrustedApiRequest, isLoopbackHostname } from './trust-fence.ts'
 import { registerBundleRoute } from './bundle-route.ts'
@@ -731,9 +732,10 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
           throw new SidebarError('fs-error', 'not a file or too large', 400)
         }
         const type = mediaTypeForPath(absolute)
-        const body = await readFile(absolute)
+        const raw = await readFile(absolute)
+        const body = type === 'text/html' ? injectHtmlScrollBridge(raw.toString('utf8')) : raw
         res.writeHead(200, {
-          'content-type': type,
+          'content-type': type === 'text/html' ? 'text/html; charset=utf-8' : type,
           'cache-control': 'no-cache',
           'x-content-type-options': 'nosniff',
           'referrer-policy': 'no-referrer',
