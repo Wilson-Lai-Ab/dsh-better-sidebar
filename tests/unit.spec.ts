@@ -508,6 +508,52 @@ describe('sidebar state', () => {
     expect(previewFilePathOf(s)).toBeUndefined()
   })
 
+  it('locates a local-history review tab path (not only type editor)', () => {
+    let s = state()
+    s = {
+      ...s,
+      centerTabs: [{
+        id: 'dsh-local-history:change:abc',
+        type: 'dsh-local-history:change',
+        title: 'README.md',
+        path: '/proj/README.md',
+      }],
+      centerActive: 'dsh-local-history:change:abc',
+    }
+    expect(previewFilePathOf(s)).toBe('/proj/README.md')
+  })
+
+  it('resolves a relative review path against the explorer cwd', () => {
+    let s = state()
+    s = {
+      ...s,
+      centerTabs: [{
+        id: 'dsh-local-history:change:rel',
+        type: 'dsh-local-history:change',
+        title: 'README.md',
+        path: 'docs/README.md',
+      }],
+      centerActive: 'dsh-local-history:change:rel',
+    }
+    expect(previewFilePathOf(s, '/proj')).toBe('/proj/docs/README.md')
+  })
+
+  it('skips a browser URL so locate still finds a workspace file', () => {
+    let s = state()
+    const leaf = s.splits as Extract<SplitNode, { kind: 'leaf' }>
+    s = {
+      ...s,
+      splits: {
+        ...leaf,
+        tabs: [...leaf.tabs, { id: 'editor:/proj/a.ts', type: 'editor', title: 'a.ts', path: '/proj/a.ts' }],
+        active: 'editor:/proj/a.ts',
+      },
+      centerTabs: [{ id: 'browser:1', type: 'browser', title: 'example.com', path: 'https://example.com/' }],
+      centerActive: 'browser:1',
+    }
+    expect(previewFilePathOf(s)).toBe('/proj/a.ts')
+  })
+
   it('patchTab updates the title and path of one open tab (browser persistence)', () => {
     let s = state()
     const leaf = s.splits as { id: string; tabs: { id: string; type: string; title: string; path?: string }[] }

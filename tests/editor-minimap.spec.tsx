@@ -54,6 +54,25 @@ afterEach(() => {
 })
 
 describe('code editor minimap', () => {
+  it('does not paint an empty toolbar above a plain code file', () => {
+    const { container, unmount } = mountEditor(viewerProps())
+    expect(container.querySelector('[class*="editorHeader"]')).toBeNull()
+    expect(container.querySelector('.cm-editor')).not.toBeNull()
+    unmount()
+  })
+
+  it('keeps the preview/edit toolbar on markdown', () => {
+    const { container, unmount } = mountEditor({
+      ...viewerProps(),
+      path: '/p/README.md',
+      title: 'README.md',
+      viewerId: 'markdown',
+      content: '# hello\n',
+    })
+    expect(container.querySelector('[class*="editorHeader"]')).not.toBeNull()
+    unmount()
+  })
+
   it('mounts a minimap gutter by default on a code file', () => {
     const { container, unmount } = mountEditor(viewerProps())
     expect(container.querySelector('.cm-minimap-gutter')).not.toBeNull()

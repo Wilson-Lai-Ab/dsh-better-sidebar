@@ -31,6 +31,7 @@ import { t } from '../locales.ts'
 import { IconCollapseAllOutline16, IconGlobeOutline16, IconLocateOutline16, IconTerminalOutline16 } from '../icons.tsx'
 import { collapseAllExplorer, expandExplorerToPath, type SidebarStore } from '../state.ts'
 import { previewFilePathOf } from './reveal.ts'
+import { EXPLORER_POLL_MS, listingsEqual, visibleExplorerDirs } from './explorer-refresh.ts'
 import { gitFocusOf } from './git-focus.ts'
 import { pluginBrowserHref } from './plugin-browser.ts'
 import { entryNameOf, explorerRowMenuIds, siblingPathOf, terminalCwdOf } from './row-menu.ts'
@@ -151,7 +152,7 @@ export function ExplorerView(props: {
     () => store?.getSnapshot().state,
     () => store?.getSnapshot().state,
   )
-  const previewPath = snapshot === undefined ? undefined : previewFilePathOf(snapshot)
+  const previewPath = snapshot === undefined ? undefined : previewFilePathOf(snapshot, cwd)
   const canLocate = cwd !== undefined && previewPath !== undefined && ancestorDirsOf(cwd, previewPath) !== null
   const canCollapse = expanded.length > 0
 
@@ -215,13 +216,39 @@ export function ExplorerView(props: {
   }, [sessionId, cwd, refreshTick])
 
   useEffect(() => {
-    // Load the visible set; already-loaded levels (kept in the cache) are
-    // not refetched. Only the refresh button wipes the cache.
+    // First paint: load any visible level that is not in the cache.
     const root = cwd
     if (root === undefined) return
     loadDir(root)
     for (const dir of expanded) loadDir(dir)
   }, [cwd, expanded, refreshTick, loadDir])
+
+  useEffect(() => {
+    // Quiet poll of the on-screen directories. The host has no fs.watch;
+    // without this, agent-created files stay missing until the user hits
+    // Refresh. Only replace a level when the listing actually changed so
+    // an unchanged tree does not flicker.
+    const dirs = visibleExplorerDirs(cwd, expanded)
+    if (dirs.length === 0) return
+    let cancelled = false
+    const poll = (): void => {
+      for (const dir of dirs) {
+        void api.fsTree({ sessionId, cwd }, dir).then((listing) => {
+          if (cancelled) return
+          const previous = dataRef.current[dir]?.entries
+          if (listingsEqual(previous, listing.entries)) return
+          storeLevel(dir, { entries: listing.entries })
+        }).catch(() => {
+          // Keep the cached level; the next tick retries.
+        })
+      }
+    }
+    const timer = window.setInterval(poll, EXPLORER_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [sessionId, cwd, expanded, storeLevel])
 
   useEffect(() => {
     if (locatePath === null) return

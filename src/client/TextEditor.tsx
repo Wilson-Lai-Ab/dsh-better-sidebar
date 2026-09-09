@@ -580,8 +580,10 @@ export function TextEditor(props: FileViewerProps) {
   const [localUnlock, setLocalUnlock] = useState(() => props.store?.getPrefs().htmlViewerDefaultUnsafe === true)
   const htmlNoSandbox = props.store?.getPrefs().htmlViewerNoSandbox === true || localUnlock
 
+  const showToolbar = markdown || html || dirty || saveLabel !== ''
   return (
     <>
+      {showToolbar && (
       <div className={css.editorHeader}>
         {(markdown || html) && (
           <div className={css.editorModeToggle}>
@@ -615,6 +617,7 @@ export function TextEditor(props: FileViewerProps) {
         )}
         {saveLabel !== '' && <span className={clsx(css.editorStatus, saveState === 'failed' && css.editorStatusError)}>{saveLabel}</span>}
       </div>
+      )}
       {editable && (
         <>
           {truncated === true && mode === 'edit' && <div className={css.editorBanner}>{t('truncation')}</div>}

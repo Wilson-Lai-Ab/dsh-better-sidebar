@@ -596,8 +596,8 @@
   min-height: 0;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-1);
-  /* Start below the host 对话 / 轨迹 strip so those tabs stay clickable. */
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  /* Flush under the host 对话 / 轨迹 strip. The header already paints
+     one hairline; a second border-top here reads as a gap. */
 }
 
 /* Chat tab selected: stay in place, just invisible. visibility/display/
@@ -1161,6 +1161,10 @@
   gap: 6px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.editorHeader:empty {
+  display: none;
 }
 
 .editorTitle {
