@@ -9,7 +9,7 @@
  * The toolbar (mode toggle / dirty dot / save / status) renders as its own
  * row below the host's title bar, VSCode-style.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
@@ -30,25 +30,6 @@ import { gitGutter, gutterLinesOfDiff, gutterLinesOfTexts, setGitGutter, type Gu
 import { gitFileTarget } from './git-repo.ts'
 import { badgeOf } from './git-status-style.ts'
 import { resolveSidebarPath } from './produced-files.ts'
-import {
-  ReviewHunkBar,
-  revertLastReview,
-  canRevertReview,
-  clearReviewHistory,
-  hunkAtLine,
-  hunksFromGutterLines,
-  hunksFromTexts,
-  hunksOfAllAdd,
-  hunksOfDiff,
-  reviewGutterPaint,
-  decisionOf,
-  hunkDecisionOf,
-  reviewRevision,
-  subscribeReview,
-  syncFileDecisionFromHunks,
-  useSessionEdits,
-  type ReviewHunk,
-} from './review/index.ts'
 import { rememberViewMode, resolveViewMode, type ViewMode } from './editor-view-mode.ts'
 import { htmlScrollRestoreMessage, parseHtmlScrollMessage } from '../html-scroll-bridge.ts'
 import { previewScrollOf, rememberPreviewScroll } from './preview-scroll.ts'
@@ -144,15 +125,12 @@ function minimapExtensions(enabled: boolean): Extension[] {
 
 export function TextEditor(props: FileViewerProps) {
   const { ctx, scope, path, viewerId, content, truncated } = props
-  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision, reviewRevision)
-  const { latest } = useSessionEdits(ctx, scope.sessionId, scope.cwd)
   const absPath = resolveSidebarPath(scope.cwd, path)
-  const sessionEdit = latest.find(edit => edit.path === absPath || edit.path === path)
   const [mode, setMode] = useState<ViewMode>(() => resolveViewMode({
     sessionId: scope.sessionId,
     path,
     viewerId,
-    hasReview: sessionEdit !== undefined,
+    hasReview: false,
   }))
   /** The editor's current text (null while clean); preview renders this. */
   const [draft, setDraft] = useState<string | null>(null)
@@ -178,24 +156,6 @@ export function TextEditor(props: FileViewerProps) {
   const restoringHtmlScroll = useRef(false)
   /** Last chip-opened span, so markdown preview can mark the same text. */
   const [reveal, setReveal] = useState<RevealRange | null>(null)
-  const [hunks, setHunks] = useState<readonly ReviewHunk[]>([])
-  const [hunkHover, setHunkHover] = useState<{ hunk: ReviewHunk; top: number } | null>(null)
-  const [hunkTick, setHunkTick] = useState(0)
-  const fileDecided = sessionEdit !== undefined && decisionOf(scope.sessionId, sessionEdit.path, sessionEdit) !== undefined
-  const openedDecided = useRef<{ path: string; decided: boolean } | null>(null)
-  if (openedDecided.current === null || openedDecided.current.path !== absPath) {
-    openedDecided.current = { path: absPath, decided: fileDecided }
-  }
-  const paintPhase = !fileDecided ? 'pending' : openedDecided.current.decided ? 'revisit' : 'just-decided'
-  const pendingHunks = useMemo(
-    () => hunks.filter(hunk => hunkDecisionOf(scope.sessionId, absPath, hunk.key) === undefined),
-    [hunks, absPath, scope.sessionId, reviewTick],
-  )
-
-  useEffect(() => {
-    if (sessionEdit === undefined || fileDecided || hunks.length === 0) return
-    syncFileDecisionFromHunks(scope.sessionId, sessionEdit.path, hunks, sessionEdit)
-  }, [absPath, fileDecided, hunks, reviewTick, scope.sessionId, sessionEdit])
 
   const hidePopup = (): void => {
     popupRef.current = null
@@ -221,27 +181,6 @@ export function TextEditor(props: FileViewerProps) {
     hidePopup()
   }
 
-  const replaceDoc = (next: string): void => {
-    const view = viewRef.current
-    if (view === null || view.state.doc.toString() === next) return
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } })
-    setDraft(next)
-    setDirty(false)
-  }
-
-  const revertReview = (direction: 'undo' | 'redo'): boolean => {
-    if (!canRevertReview(scope.sessionId, absPath, direction)) return false
-    void revertLastReview(scope, absPath, direction).then((result) => {
-      if (!result.applied) return
-      if (typeof result.content === 'string') replaceDoc(result.content)
-      setHunkHover(null)
-      setHunkTick(tick => tick + 1)
-    })
-    return true
-  }
-  const revertReviewRef = useRef(revertReview)
-  revertReviewRef.current = revertReview
-
   useEffect(() => subscribeColorScheme(() => { setDark(isDarkScheme()) }), [])
 
   const pickMode = (next: ViewMode): void => {
@@ -249,23 +188,20 @@ export function TextEditor(props: FileViewerProps) {
     setMode(next)
   }
 
-  // A new file (tab switch) starts clean. Markdown / HTML with pending
-  // review open in source so the user can see paints and Keep / Undo —
-  // unless they already picked Preview / Edit for this path.
+  // A new file (tab switch) starts clean. Unless the user already picked
+  // Preview / Edit for this path, markdown / HTML keep their default mode.
   useEffect(() => {
     setMode(resolveViewMode({
       sessionId: scope.sessionId,
       path,
       viewerId,
-      hasReview: sessionEdit !== undefined,
+      hasReview: false,
     }))
     setDraft(null)
     setDirty(false)
     setSaveState('idle')
     hidePopup()
     setReveal(null)
-    setHunks([])
-    setHunkHover(null)
   }, [content])
 
   // Create the CodeMirror editor once the content is loaded. The view owns
@@ -303,9 +239,6 @@ export function TextEditor(props: FileViewerProps) {
           if (update.docChanged) {
             setDraft(update.state.doc.toString())
             setDirty(true)
-            if (update.transactions.some(item => item.isUserEvent('input') || item.isUserEvent('delete'))) {
-              clearReviewHistory(scope.sessionId, absPath)
-            }
           }
         }),
         keymap.of([
@@ -313,21 +246,6 @@ export function TextEditor(props: FileViewerProps) {
             key: 'Mod-s',
             preventDefault: true,
             run: () => { save(); return true },
-          },
-          {
-            key: 'Mod-z',
-            preventDefault: true,
-            run: () => revertReviewRef.current('undo'),
-          },
-          {
-            key: 'Mod-Shift-z',
-            preventDefault: true,
-            run: () => revertReviewRef.current('redo'),
-          },
-          {
-            key: 'Mod-y',
-            preventDefault: true,
-            run: () => revertReviewRef.current('redo'),
           },
           ...defaultKeymap,
           ...historyKeymap,
@@ -395,22 +313,9 @@ export function TextEditor(props: FileViewerProps) {
     const view = viewRef.current
     if (view === null) return
     let cancelled = false
-    const apply = (lines: readonly GutterLine[], nextHunks: readonly ReviewHunk[]): void => {
+    const apply = (lines: readonly GutterLine[]): void => {
       if (cancelled || viewRef.current !== view) return
-      const hunkList = nextHunks.length > 0 ? nextHunks : hunksFromGutterLines(lines)
-      const decidedHunkKeys = new Set(
-        hunkList
-          .filter(hunk => hunkDecisionOf(scope.sessionId, absPath, hunk.key) !== undefined)
-          .map(hunk => hunk.key),
-      )
-      const painted = reviewGutterPaint({
-        phase: paintPhase,
-        lines,
-        hunks: hunkList,
-        decidedHunkKeys,
-      })
-      setHunks(paintPhase === 'pending' ? hunkList : [])
-      view.dispatch({ effects: setGitGutter.of(painted.lines as GutterLine[]) })
+      view.dispatch({ effects: setGitGutter.of([...lines]) })
     }
     const allAdd = (): GutterLine[] => {
       const lines: GutterLine[] = []
@@ -422,8 +327,8 @@ export function TextEditor(props: FileViewerProps) {
       const status = await api.gitStatus(target.scope)
       const file = absPath.replace(/\\/g, '/')
       const entry = status.entries.find(item => item.path === target.gitPath || item.path === path || file.endsWith(`/${item.path}`))
-      if (entry !== undefined && badgeOf(entry) === '?' && sessionEdit?.kind === 'add') {
-        apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
+      if (entry !== undefined && badgeOf(entry) === '?') {
+        apply(allAdd())
         return
       }
       const candidate = target.gitPath
@@ -433,77 +338,21 @@ export function TextEditor(props: FileViewerProps) {
         : unstaged
       const text = (staged.diff !== '' ? staged : unstaged).diff
       if (text !== '') {
-        apply(gutterLinesOfDiff(text), hunksOfDiff(text))
+        apply(gutterLinesOfDiff(text))
         return
       }
       const shown = await api.gitShow(target.scope, candidate, 'HEAD').catch(() => ({ content: null }))
       const current = view.state.doc.toString()
-      const before = shown.content ?? (typeof sessionEdit?.oldText === 'string' ? sessionEdit.oldText : null)
-      if (before === null) {
-        if (sessionEdit?.kind === 'add' || sessionEdit?.oldText === null) apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
-        else apply([], [])
+      if (shown.content === null) {
+        apply([])
         return
       }
-      const marks = gutterLinesOfTexts(before, current)
-      if (marks.length === 0 && before !== current && (sessionEdit?.kind === 'add' || sessionEdit?.oldText === null)) {
-        apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
-      } else {
-        apply(marks, hunksFromTexts(before, current))
-      }
+      apply(gutterLinesOfTexts(shown.content, current))
     })().catch(() => {
-      const current = view.state.doc.toString()
-      if (typeof sessionEdit?.oldText === 'string') {
-        apply(gutterLinesOfTexts(sessionEdit.oldText, current), hunksFromTexts(sessionEdit.oldText, current))
-        return
-      }
-      if (sessionEdit?.kind === 'add' || sessionEdit?.oldText === null) apply(allAdd(), hunksOfAllAdd(view.state.doc.lines))
-      else apply([], [])
+      apply([])
     })
     return () => { cancelled = true }
-  }, [absPath, content, fileDecided, paintPhase, path, reviewTick, scope.sessionId, scope.cwd, hunkTick, sessionEdit?.kind, sessionEdit?.oldText])
-
-  useEffect(() => {
-    const host = hostRef.current
-    const view = viewRef.current
-    const sourceHidden = (viewerId === 'markdown' || viewerId === 'html') && mode === 'preview'
-    if (host === null || view === null || paintPhase !== 'pending' || pendingHunks.length === 0 || sourceHidden) {
-      setHunkHover(null)
-      return
-    }
-    const overBar = (target: EventTarget | null): boolean =>
-      target instanceof Element && target.closest(`.${css.reviewHunkBar}`) !== null
-    const onMove = (event: MouseEvent): void => {
-      if (overBar(event.target)) return
-      const block = view.lineBlockAtHeight(event.clientY - view.documentTop)
-      const line = view.state.doc.lineAt(block.from).number
-      const hunk = hunkAtLine(pendingHunks, line)
-      if (hunk === undefined) {
-        setHunkHover(null)
-        return
-      }
-      const coords = view.coordsAtPos(view.state.doc.line(hunk.paintStart).from)
-      const box = host.getBoundingClientRect()
-      const top = coords === null ? 8 : Math.max(8, Math.min(box.height - 36, coords.top - box.top))
-      setHunkHover(current => current !== null && current.hunk.key === hunk.key && Math.abs(current.top - top) < 1
-        ? current
-        : { hunk, top })
-    }
-    const onLeave = (event: MouseEvent): void => {
-      if (overBar(event.relatedTarget)) return
-      if (event.relatedTarget instanceof Node && host.contains(event.relatedTarget)) return
-      setHunkHover(null)
-    }
-    host.addEventListener('mousemove', onMove)
-    host.addEventListener('mouseleave', onLeave)
-    view.dom.addEventListener('mousemove', onMove)
-    view.dom.addEventListener('mouseleave', onLeave)
-    return () => {
-      host.removeEventListener('mousemove', onMove)
-      host.removeEventListener('mouseleave', onLeave)
-      view.dom.removeEventListener('mousemove', onMove)
-      view.dom.removeEventListener('mouseleave', onLeave)
-    }
-  }, [paintPhase, pendingHunks, mode, viewerId, content])
+  }, [absPath, content, path, scope.sessionId, scope.cwd])
 
   // Scheme flip: re-theme in place (the compartment holds only the
   // scheme-dependent extensions; everything else is untouched).
@@ -515,7 +364,7 @@ export function TextEditor(props: FileViewerProps) {
   }, [dark])
 
   // Side card "show minimap" toggle: reconfigure in place so undo/scroll
-  // survive. The CSS var keeps the Keep/Undo hunk bar off the thumbnail.
+  // survive.
   const readMinimapOn = useCallback(
     () => props.store?.getPrefs().editorMinimap !== false,
     [props.store],
@@ -554,11 +403,7 @@ export function TextEditor(props: FileViewerProps) {
     }
   }, [mode, reveal])
 
-  const lastMode = useRef(mode)
-  useEffect(() => {
-    if (lastMode.current !== 'edit' && mode === 'edit') setHunkTick(tick => tick + 1)
-    lastMode.current = mode
-  }, [mode])
+
 
   /** Composer chip click: jump to the requested span and mark it. */
   useEffect(() => {
@@ -781,23 +626,7 @@ export function TextEditor(props: FileViewerProps) {
               if (current === null) return
               writeFileRefClipboard(event.nativeEvent, current.ref)
             }}
-          >
-            {paintPhase === 'pending' && hunkHover !== null && (
-              <ReviewHunkBar
-                scope={scope}
-                path={absPath}
-                hunk={hunkHover.hunk}
-                hunks={hunks}
-                edit={sessionEdit}
-                top={hunkHover.top}
-                onDone={(next) => {
-                  setHunkHover(null)
-                  if (next !== undefined) replaceDoc(next)
-                  setHunkTick(tick => tick + 1)
-                }}
-              />
-            )}
-          </div>
+          />
         </>
       )}
       {markdown && mode === 'preview' && (

@@ -52,12 +52,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   clampCenterTabMax,
-  clampReviewDoneSessions,
   clampWidthPercent,
   CENTER_TAB_MAX_MAX,
   CENTER_TAB_MAX_MIN,
-  REVIEW_DONE_SESSIONS_MAX,
-  REVIEW_DONE_SESSIONS_MIN,
   TITLE_BAR_STRIP_MAX,
   TITLE_BAR_STRIP_MIN,
   WIDTH_PERCENT_MAX,
@@ -386,7 +383,6 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
   const [prefs, setPrefs] = useState<SidebarPrefs>(() => store.getPrefs())
   const [widthDraft, setWidthDraft] = useState<string>(String(store.getPrefs().defaultWidthPercent))
   const [centerMaxDraft, setCenterMaxDraft] = useState<string>(String(store.getPrefs().centerTabMax))
-  const [reviewSessionsDraft, setReviewSessionsDraft] = useState<string>(String(store.getPrefs().reviewDoneSessionLimit))
   const [error, setError] = useState<string | null>(null)
   // Which feature's secondary settings popup is open (null = closed).
   const [settingsFor, setSettingsFor] = useState<TabDescriptor | FileViewerDescriptor | null>(null)
@@ -438,7 +434,6 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
       setPrefs(next)
       setWidthDraft(String(next.defaultWidthPercent))
       setCenterMaxDraft(String(next.centerTabMax))
-      setReviewSessionsDraft(String(next.reviewDoneSessionLimit))
     }).catch(() => { /* the store's defaults stay authoritative */ })
     return () => { cancelled = true }
   }, [])
@@ -473,7 +468,6 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
     setPrefs(settled)
     setWidthDraft(String(settled.defaultWidthPercent))
     setCenterMaxDraft(String(settled.centerTabMax))
-    setReviewSessionsDraft(String(settled.reviewDoneSessionLimit))
   }
 
   /** Optimistically apply one pref patch, then commit (revert on failure). */
@@ -580,21 +574,6 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
     setCenterMaxDraft(String(clamped))
     setError(null)
     void commit({ centerTabMax: clamped }).then(outcome => applyOutcome(previous, outcome))
-  }
-
-  const commitReviewSessions = (): void => {
-    const parsed = Number(reviewSessionsDraft)
-    if (!Number.isFinite(parsed)) {
-      setReviewSessionsDraft(String(prefs.reviewDoneSessionLimit))
-      return
-    }
-    const clamped = clampReviewDoneSessions(parsed)
-    const previous = prefs
-    setPrefs({ ...previous, reviewDoneSessionLimit: clamped })
-    store.setPrefs({ ...previous, reviewDoneSessionLimit: clamped })
-    setReviewSessionsDraft(String(clamped))
-    setError(null)
-    void commit({ reviewDoneSessionLimit: clamped }).then(outcome => applyOutcome(previous, outcome))
   }
 
   /**
@@ -770,28 +749,6 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
             </span>
           </div>
         )}
-        <div className={css.row}>
-          <span className={css.rowText}>
-            <span className={css.title}>{t('reviewDoneSessionsTitle')}</span>
-            <span className={css.desc}>{t('reviewDoneSessionsDesc')}</span>
-          </span>
-          <span className={css.control}>
-            <Input
-              type="number"
-              className={css.percentInput}
-              value={reviewSessionsDraft}
-              min={REVIEW_DONE_SESSIONS_MIN}
-              max={REVIEW_DONE_SESSIONS_MAX}
-              step={1}
-              aria-label={t('reviewDoneSessionsTitle')}
-              onChange={(event) => { setReviewSessionsDraft(event.currentTarget.value) }}
-              onBlur={commitReviewSessions}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur()
-              }}
-            />
-          </span>
-        </div>
       </div>
 
       {/* 侧边栏内容: one small card per registered tab type in a responsive

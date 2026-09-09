@@ -41,13 +41,6 @@ import { defaultShell, ensureSpawnHelper, PtyManager } from './pty-manager.ts'
 import { AgentPtyRegistry, clampDims, type AgentTerminalHandle } from './agent-pty.ts'
 import { registerTools } from './tools.ts'
 import { buildJobsApi, type SidebarJobsRoutes } from './jobs-routes.ts'
-import {
-  defaultSessionsRoot,
-  parseReviewDocument,
-  readReviewDocument,
-  reviewFilePath,
-  writeReviewDocument,
-} from './review/index.ts'
 import { readJsonBody, requireString, SidebarError, writeError, writeJson, writeOk } from './wire.ts'
 
 export { Config }
@@ -391,18 +384,6 @@ function buildApi(
       const path = await resolveGitPath(cwd, requireString(payload, 'path'))
       const rev = requireString(payload, 'rev')
       return { content: await git.show(cwd, rev, path) }
-    },
-    'review.get': async (payload) => {
-      const { sessionId, cwd } = cwdOf(payload)
-      return await readReviewDocument(reviewFilePath(defaultSessionsRoot(), cwd, sessionId))
-    },
-    'review.put': async (payload) => {
-      const { sessionId, cwd } = cwdOf(payload)
-      const record = payload as { document?: unknown }
-      const document = parseReviewDocument(record.document)
-      const path = reviewFilePath(defaultSessionsRoot(), cwd, sessionId)
-      await writeReviewDocument(path, document)
-      return document
     },
     // Release a terminal immediately. The WebSocket close frame already does
     // this while the socket is open; this route covers the tab-close that

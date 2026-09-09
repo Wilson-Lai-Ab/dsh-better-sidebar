@@ -1,4 +1,3 @@
-import type { ReviewDocument } from '../review/review-document.ts';
 import type { BrowserProbeResult } from './browser.ts';
 /** One wire failure. */
 export declare class SidebarApiError extends Error {
@@ -192,10 +191,6 @@ export declare const api: {
         ok: true;
         outcome: "requested" | "already-finished";
     }>;
-    /** Read this conversation's Keep / Undo ledger from the session directory. */
-    reviewGet: (scope: SessionScope, signal?: AbortSignal) => Promise<ReviewDocument>;
-    /** Replace this conversation's Keep / Undo ledger on disk. */
-    reviewPut: (scope: SessionScope, document: ReviewDocument) => Promise<ReviewDocument>;
     /** Read the side card preferences (plugin-global, no session scope). */
     settingsGet: () => Promise<{
         value?: unknown;

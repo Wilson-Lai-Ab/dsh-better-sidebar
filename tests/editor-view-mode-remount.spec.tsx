@@ -1,6 +1,6 @@
 /**
- * Reviewed HTML/Markdown default to source, but a user Preview toggle
- * must survive the center overlay unmounting (对话 ↔ file tab).
+ * HTML/Markdown default to preview. A user Preview / Edit toggle must
+ * survive the center overlay unmounting (对话 ↔ file tab).
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
@@ -86,10 +86,10 @@ afterEach(() => {
 })
 
 describe('reviewed HTML preview mode across remount', () => {
-  it('opens a reviewed HTML file in source', () => {
+  it('opens an HTML file in preview when builtin review is gone', () => {
     const { container, unmount } = mountEditor(viewerProps())
-    expect(isActive(modeButton(container, 'edit'))).toBe(true)
-    expect(isActive(modeButton(container, 'preview'))).toBe(false)
+    expect(isActive(modeButton(container, 'preview'))).toBe(true)
+    expect(isActive(modeButton(container, 'edit'))).toBe(false)
     unmount()
   })
 

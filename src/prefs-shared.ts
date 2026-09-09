@@ -54,10 +54,11 @@ export interface SidebarPrefs {
   bottomPanelAutoTerminal: boolean
   /**
    * Whether chat-side file opens (tool-row path links, the produced-files
-   * row, prose file mentions — every path that funnels through the client
-   * runtime's `ctx.workspaces.openPath`) open in the sidebar editor instead
-   * of the Host OS's default application. On by default; the editor tab's
-   * own enable switch gates it too (both must be on for the takeover).
+   * row, prose file mentions — every path that funnels through
+   * `ctx.remote.session.openWorkspacePath`, or `ctx.workspaces.openPath` on
+   * older DSH) open in the sidebar editor instead of the Host OS's default
+   * application. On by default; the editor tab's own enable switch gates it
+   * too (both must be on for the takeover).
    */
   interceptOpenPath: boolean
   /**
@@ -137,12 +138,6 @@ export interface SidebarPrefs {
    */
   centerTabMax: number
   /**
-   * Page size for Review's All / Reviewed turn groups in the current
-   * conversation. Scrolling loads older turns and earlier file writes.
-   * Pending is never capped. Other conversations are not listed.
-   */
-  reviewDoneSessionLimit: number
-  /**
    * Whether the CodeMirror file editor shows a VS Code-style minimap on
    * the right. On by default; the code viewer's Side card settings row
    * can turn it off. Markdown / HTML source editing share this flag.
@@ -196,11 +191,6 @@ export const CENTER_TAB_MAX_MIN = 1
 export const CENTER_TAB_MAX_MAX = 100
 export const CENTER_TAB_MAX_DEFAULT = 20
 
-/** Range contract of {@link SidebarPrefs.reviewDoneSessionLimit}. */
-export const REVIEW_DONE_SESSIONS_MIN = 1
-export const REVIEW_DONE_SESSIONS_MAX = 50
-export const REVIEW_DONE_SESSIONS_DEFAULT = 30
-
 /** Fallback prefs used whenever the settings document is unreachable or malformed. */
 export const SIDEBAR_PREFS_DEFAULTS: SidebarPrefs = {
   openByDefault: true,
@@ -222,7 +212,6 @@ export const SIDEBAR_PREFS_DEFAULTS: SidebarPrefs = {
   browserInterceptHttps: false,
   centerTabOverflow: 'scroll',
   centerTabMax: CENTER_TAB_MAX_DEFAULT,
-  reviewDoneSessionLimit: REVIEW_DONE_SESSIONS_DEFAULT,
   editorMinimap: true,
   tabsEnabled: {},
   viewersEnabled: {},
@@ -247,10 +236,4 @@ export function clampTitleBarStrip(value: number): number {
 /** Clamp the conversation-header tab cap into the contract range. */
 export function clampCenterTabMax(value: number): number {
   return Math.min(CENTER_TAB_MAX_MAX, Math.max(CENTER_TAB_MAX_MIN, Math.round(value)))
-}
-
-/** Clamp the Review tab's turn-group page size. */
-export function clampReviewDoneSessions(value: unknown): number {
-  const n = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : REVIEW_DONE_SESSIONS_DEFAULT
-  return Math.min(REVIEW_DONE_SESSIONS_MAX, Math.max(REVIEW_DONE_SESSIONS_MIN, n))
 }

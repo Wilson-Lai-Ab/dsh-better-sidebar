@@ -26,8 +26,6 @@ import { encodeFileRef, FILE_REF_MIME, fileClipboardText, fileRefOf } from '../f
 import type { Context } from '../../context-types.ts'
 import { classOfKind, explorerKindOf, gitKindByPath, sessionKindByPath, type GitStatusKind } from '../git-status-style.ts'
 import { localHistoryFaceOf, sessionEditsFromLhPending, type LhPendingKind } from '../lh-pending.ts'
-import { pendingEdits } from '../review/review-filter.ts'
-import { useSessionEdits } from '../review/use-session-edits.ts'
 import { ancestorDirsOf, relativeTo, sameFsPath } from '../paths.ts'
 import { t } from '../locales.ts'
 import { IconCollapseAllOutline16, IconGlobeOutline16, IconLocateOutline16, IconTerminalOutline16 } from '../icons.tsx'
@@ -106,21 +104,16 @@ export function ExplorerView(props: {
   const bodyRef = useRef<HTMLDivElement>(null)
   const [refreshTick, setRefreshTick] = useState(0)
   const [gitKinds, setGitKinds] = useState<Map<string, GitStatusKind>>(() => new Map())
-  const [lhEdits, setLhEdits] = useState<{ path: string; kind: LhPendingKind }[] | null>(null)
-  const sessionEdits = useSessionEdits(ctx ?? ({} as Context), sessionId, cwd)
-  const builtinEdits = useMemo(
-    () => pendingEdits(sessionId, sessionEdits.latest).map(edit => ({ path: edit.path, kind: edit.kind })),
-    [sessionId, sessionEdits.latest, sessionEdits.pending],
-  )
+  const [lhEdits, setLhEdits] = useState<{ path: string; kind: LhPendingKind }[]>([])
   const sessionKinds = useMemo(
-    () => sessionKindByPath(cwd, lhEdits ?? builtinEdits),
-    [cwd, lhEdits, builtinEdits],
+    () => sessionKindByPath(cwd, lhEdits),
+    [cwd, lhEdits],
   )
 
   useEffect(() => {
     const face = localHistoryFaceOf(ctx)
     if (face === undefined) {
-      setLhEdits(null)
+      setLhEdits([])
       return
     }
     let cancelled = false
@@ -129,7 +122,7 @@ export function ExplorerView(props: {
         if (cancelled || !result.ok) return
         setLhEdits(sessionEditsFromLhPending(result.value?.records ?? []))
       }).catch(() => {
-        if (!cancelled) setLhEdits(null)
+        if (!cancelled) setLhEdits([])
       })
     }
     load()
@@ -138,7 +131,7 @@ export function ExplorerView(props: {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [ctx, sessionId, cwd, sessionEdits.pending])
+  }, [ctx, sessionId, cwd])
   const rowKind = (path: string, isDir: boolean): GitStatusKind | undefined =>
     explorerKindOf(path, sessionKinds, gitKinds, isDir)
   /** The row whose path was just copied ("copied" label replaces its button). */

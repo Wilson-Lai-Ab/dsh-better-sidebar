@@ -1,6 +1,6 @@
 /**
- * The 9 built-in tab descriptors: the plugin registers its own pages
- * (explorer / git / review / terminal / browser / subagent / editor / diff / git-log) through
+ * The 8 built-in tab descriptors: the plugin registers its own pages
+ * (explorer / git / terminal / browser / subagent / editor / diff / git-log) through
  * the same {@link BetterSidebarService} external plugins use — eating its
  * own dogfood. The terminal descriptor owns its quota (`TERMINAL_LIMIT`)
  * and mints `terminal:<n>` ids through `createTab`; the browser mints
@@ -19,12 +19,11 @@ import { forgetPreviewScroll } from '../preview-scroll.ts'
 import { EditorHost } from '../EditorHost.tsx'
 import { lazyChunkComponent } from '../lazy-chunk.tsx'
 import { GitView } from '../GitView.tsx'
-import { ReviewView, collectSessionEdits, latestSessionEdits, pendingCount } from '../review/index.ts'
 import { GitLogView } from '../GitLogView.tsx'
 import { DiffTab } from '../DiffTab.tsx'
 import { SubagentView } from '../SubagentView.tsx'
 import { BrowserView } from '../BrowserView.tsx'
-import { IconTerminalOutline16, IconDiffOutline16, IconGlobeOutline16, IconHistoryOutline16, IconReviewOutline16 } from '../icons.tsx'
+import { IconTerminalOutline16, IconDiffOutline16, IconGlobeOutline16, IconHistoryOutline16 } from '../icons.tsx'
 
 import { TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN } from '../../prefs-shared.ts'
 import type { ComponentType } from 'react'
@@ -150,25 +149,6 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
           onOpenFile={(path) => { openSidebarFile(ctx, store, scope.sessionId, path) }}
           onOpenDiff={onOpenDiff ?? (() => { /* no-op */ })}
         />
-      ),
-    },
-    {
-      id: 'review',
-      title: () => t('review'),
-      icon: (size: number) => <IconReviewOutline16 size={size} />,
-      order: 25,
-      single: true,
-      badge: (ctx, scope) => {
-        const nodes = ctx.sessions.binding?.(scope.sessionId)?.session.getSnapshot().nodes ?? []
-        try {
-          const count = pendingCount(scope.sessionId, latestSessionEdits(collectSessionEdits(nodes, scope.cwd)))
-          return count === 0 ? null : count
-        } catch {
-          return null
-        }
-      },
-      component: ({ ctx, store, scope }) => (
-        <ReviewView ctx={ctx} store={store} scope={scope} />
       ),
     },
     {

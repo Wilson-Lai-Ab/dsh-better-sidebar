@@ -7,7 +7,6 @@
  * request). Failures surface as {@link SidebarApiError} with the wire code.
  */
 import { encodeHtmlUrl } from '../html-route.ts'
-import type { ReviewDocument } from '../review/review-document.ts'
 import type { BrowserProbeResult } from './browser.ts'
 
 /** One wire failure. */
@@ -217,12 +216,6 @@ export const api = {
       id,
       ...(reason !== undefined ? { reason } : {}),
     })),
-  /** Read this conversation's Keep / Undo ledger from the session directory. */
-  reviewGet: (scope: SessionScope, signal?: AbortSignal) =>
-    call<ReviewDocument>('review.get', scopePayload(scope, {}), signal),
-  /** Replace this conversation's Keep / Undo ledger on disk. */
-  reviewPut: (scope: SessionScope, document: ReviewDocument) =>
-    call<ReviewDocument>('review.put', scopePayload(scope, { document })),
   /** Read the side card preferences (plugin-global, no session scope). */
   settingsGet: () =>
     call<{ value?: unknown; revision?: number }>('settings.get', {}),

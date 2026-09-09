@@ -28,7 +28,7 @@ import { isImageExt } from '../src/client/image-types.ts'
 import { previewFilePathOf } from '../src/client/explorer/reveal.ts'
 import { ancestorDirsOf, relativeTo, sameFsPath } from '../src/client/paths.ts'
 import { producedForClosing, resolveSidebarPath, selectProducedFiles } from '../src/client/produced-files.ts'
-import { wrapOpenPath, type OpenPathInterceptDeps, type OpenPathService } from '../src/client/openpath-intercept.ts'
+import { wrapOpenPath, wrapOpenWorkspacePath, type OpenPathInterceptDeps, type OpenPathService, type OpenWorkspacePathService } from '../src/client/openpath-intercept.ts'
 import { registerOpenPathInterception } from '../src/client/intercept.tsx'
 import type { Context } from '../src/context-types.ts'
 import { defaultShell, ensureSpawnHelper } from '../src/pty-manager.ts'
@@ -1726,6 +1726,51 @@ describe('open-path interception', () => {
   })
 })
 
+describe('open-workspace-path interception', () => {
+  const service = (): OpenWorkspacePathService & { calls: string[] } => {
+    const fake = {
+      calls: [] as string[],
+      async openWorkspacePath(request: { path: string }): Promise<{ ok: true; value: { opened: true } }> {
+        this.calls.push(request.path)
+        return { ok: true, value: { opened: true } }
+      },
+    }
+    return fake
+  }
+
+  const deps = (overrides: Partial<OpenPathInterceptDeps> = {}): OpenPathInterceptDeps & { sidebar: string[] } => {
+    const sidebar: string[] = []
+    return {
+      sidebar,
+      takeoverEnabled: () => true,
+      currentSessionId: () => 's1',
+      openInSidebar: (path, sessionId) => { sidebar.push(`${sessionId}:${path}`) },
+      ...overrides,
+    }
+  }
+
+  it('routes a chat tool-row open into the sidebar instead of the Host OS', async () => {
+    const session = service()
+    const d = deps()
+    const restore = wrapOpenWorkspacePath(session, d)
+    const result = await session.openWorkspacePath({ path: '/w/src/client/ReviewView.tsx' })
+    expect(result).toEqual({ ok: true, value: { opened: true } })
+    expect(session.calls).toEqual([])
+    expect(d.sidebar).toEqual(['s1:/w/src/client/ReviewView.tsx'])
+    restore()
+  })
+
+  it('falls through to native open when takeover is disabled', async () => {
+    const session = service()
+    const d = deps({ takeoverEnabled: () => false })
+    const restore = wrapOpenWorkspacePath(session, d)
+    await session.openWorkspacePath({ path: '/w/src/a.ts' })
+    expect(session.calls).toEqual(['/w/src/a.ts'])
+    expect(d.sidebar).toEqual([])
+    restore()
+  })
+})
+
 describe('open-path interception wiring', () => {
   it('registerOpenPathInterception routes chat opens into the editor tab and restores on dispose', async () => {
     // A realistic client-context fake: the sessions list feed (current + cwd),
@@ -1770,6 +1815,54 @@ describe('open-path interception wiring', () => {
     // Disposal restores the raw original method (HMR-safe).
     restore()
     expect(ctx.workspaces.openPath).toBe(original)
+  })
+
+  it('does not read ctx.remote.session (cordis throws without inject "remote.session")', () => {
+    const ctx = {
+      sessions: {
+        list: { getSnapshot: () => ({ current: 's1', byId: { s1: { cwd: '/w' } } }) },
+      },
+      workspaces: { openPath: async (): Promise<void> => {} },
+      remote: new Proxy({}, {
+        get(_target, prop) {
+          if (prop === 'session') throw new Error('cannot get property "remote.session" without inject')
+          return undefined
+        },
+      }),
+    } as unknown as Context
+    expect(() => registerOpenPathInterception(ctx, createSidebarStore())).not.toThrow()
+  })
+
+  it('registerOpenPathInterception also wraps session.openWorkspacePath (current DSH chat funnel)', async () => {
+    const opened: Array<Record<string, unknown>> = []
+    const native: string[] = []
+    const session = {
+      async openWorkspacePath(request: { path: string }) {
+        native.push(request.path)
+        return { ok: true as const, value: { opened: true as const } }
+      },
+    }
+    const ctx = {
+      sessions: {
+        list: { getSnapshot: () => ({ current: 's1', byId: { s1: { cwd: '/w' } } }) },
+      },
+      workspaces: { openPath: async (): Promise<void> => {} },
+      get: (name: string) => name === 'remote.session' ? session : undefined,
+      betterSidebar: { openTab: (seed: unknown) => { opened.push(seed as Record<string, unknown>) } },
+    } as unknown as Context
+    const store = createSidebarStore()
+    const original = session.openWorkspacePath
+    const restore = registerOpenPathInterception(ctx, store)
+    await session.openWorkspacePath({ path: '/w/src/client/ReviewView.tsx' })
+    expect(native).toEqual([])
+    expect(opened).toEqual([{
+      type: 'editor',
+      title: 'ReviewView.tsx',
+      path: '/w/src/client/ReviewView.tsx',
+      id: 'editor:/w/src/client/ReviewView.tsx',
+    }])
+    restore()
+    expect(session.openWorkspacePath).toBe(original)
   })
 })
 

@@ -27,11 +27,11 @@ export declare function SidebarProducedFiles(props: {
  */
 export declare function registerTurnTailInterception(ctx: Context, store: SidebarStore): () => void;
 /**
- * Register the chat file-open interception: wraps `ctx.workspaces.openPath`
- * — the single funnel every chat-side file open goes through (tool-row path
- * links, the produced-files row, prose mentions) — so opens land in the
- * sidebar editor instead of the Host OS. Gated by BOTH the `interceptOpenPath`
- * pref and the editor tab's enable switch; declined opens fall through to
- * the original method. Returns the disposer restoring the original (HMR-safe).
+ * Register the chat file-open interception. Current DSH tool-row clicks call
+ * `ctx.remote.session.openWorkspacePath` (Host OS default app). Older builds
+ * used `ctx.workspaces.openPath`. Both are wrapped so files land in the
+ * sidebar editor. Gated by BOTH the `interceptOpenPath` pref and the editor
+ * tab's enable switch; declined opens fall through. Returns the disposer
+ * restoring the original methods (HMR-safe).
  */
 export declare function registerOpenPathInterception(ctx: Context, store: SidebarStore): () => void;

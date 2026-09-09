@@ -24,8 +24,6 @@ export declare const IconPanelBottomOutline16: ({ size, className }: IconProps) 
 export declare const IconTerminalOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
 /** History / log glyph: a clock with a tail (IDEA-style git log). */
 export declare const IconHistoryOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
-/** Review glyph: a checklist on a file. */
-export declare const IconReviewOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
 /** Diff glyph in the app's outline style: a file frame with a plus and a minus row. */
 export declare const IconDiffOutline16: ({ size, className }: IconProps) => import("react").JSX.Element;
 /**

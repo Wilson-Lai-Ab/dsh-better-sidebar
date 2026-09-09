@@ -51,15 +51,6 @@ export const IconHistoryOutline16 = ({ size = 16, className }: IconProps) => (
   </svg>
 )
 
-/** Review glyph: a checklist on a file. */
-export const IconReviewOutline16 = ({ size = 16, className }: IconProps) => (
-  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="2" y="1.5" width="9.5" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M4.25 5.25h5M4.25 8h5M4.25 10.75h2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <path d="m10.25 9.5 1.5 1.5 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
 /** Diff glyph in the app's outline style: a file frame with a plus and a minus row. */
 export const IconDiffOutline16 = ({ size = 16, className }: IconProps) => (
   <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

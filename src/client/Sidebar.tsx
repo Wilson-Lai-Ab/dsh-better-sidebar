@@ -14,7 +14,7 @@
  *
  * The shell binds the workbench actions to the store and dispatches tab
  * content to the views. New tool views open from the activity bar
- * (explorer / git / review / terminal; editors open from the explorer).
+ * (explorer / git / terminal; editors open from the explorer).
  * Tabs can be dragged between
  * the right and bottom workbenches, dropped on the conversation header
  * (对话 / 轨迹) to become a center view, or dropped on the chat body
@@ -52,7 +52,6 @@ import { detectNewDirectSubagent } from './subagent-detect.ts'
 import { detectNewJob } from './subagent-jobs.ts'
 import { t } from './locales.ts'
 import { api, type SessionScope } from './api.ts'
-import { reviewRevision, subscribeReview } from './review/index.ts'
 import { classOfKind, useGitKindMap, workspacePathOfTab } from './git-status-style.ts'
 import css from './sidebar.module.css'
 
@@ -94,8 +93,6 @@ export function Sidebar(props: { ctx: Context; store: SidebarStore }) {
     useCallback(() => ctx.locale.getSnapshot().active, [ctx]),
   )
   void localeRevision
-  const reviewTick = useSyncExternalStore(subscribeReview, reviewRevision)
-  void reviewTick
 
   // Narrow (mobile) viewports collapse the two panels into one: the right
   // panel becomes a full-width drawer holding BOTH workbenches, the bottom

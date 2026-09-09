@@ -13,7 +13,7 @@
  *     plugin's `[data-dsh-better-sidebar]` host mount;
  *  3. asserts the plugin's crash markers never appear (no RenderBoundary /
  *     fail() strips, no `pageerror`, no plugin-prefixed console errors);
- *  4. sweeps every built-in tab (Explorer / Source Control / Review / Tasks /
+ *  4. sweeps every built-in tab (Explorer / Source Control / Tasks /
  *     Terminal / Browser) — including the lazily-fetched terminal chunk —
  *     and then opens a seeded file through the Explorer to force the
  *     lazily-fetched editor chunk (client-editor.js) to load as well.
@@ -47,7 +47,7 @@ const SEEDED_FILE = 'hello.txt'
 const CRASH_STRIP_PATTERNS = [/^dsh-better-sidebar:/, /^\[dsh-better-sidebar\]/]
 
 /** Built-in tab titles the sweep drives (en-US copy; follows DSH locale). */
-const BUILTIN_TABS = ['Explorer', 'Source Control', 'Review', 'Tasks', 'Terminal', 'Browser']
+const BUILTIN_TABS = ['Explorer', 'Source Control', 'Tasks', 'Terminal', 'Browser']
 
 let api: APIRequestContext
 

@@ -1,14 +1,12 @@
 /**
- * Interception of the chat's file-open funnel. The client runtime's
- * `ctx.workspaces.openPath` is the SINGLE door every chat-side file open goes
- * through — ui-conversation's apply.ts resolves the path against the session
- * cwd and calls it for tool-row path links, the produced-files row, and
- * prose file mentions alike (verified against the DSH source:
- * `packages/client/ui-conversation/src/client/apply.ts` is the only
- * production caller). Wrapping that one method reroutes those opens into the
- * sidebar editor instead of the Host OS — no DSH modification needed.
+ * Interception of the chat's file-open funnel. Current DSH chat tool-row
+ * clicks call `ctx.remote.session.openWorkspacePath` (which hands the path
+ * to the Host OS default app — VS Code on this machine). Older DSH builds
+ * used `ctx.workspaces.openPath`. Both wrappers live here so the takeover
+ * still works across that rename; intercepted calls open the sidebar editor
+ * instead of launching the Host OS — no DSH modification needed.
  *
- * The wrapper is dependency-free by design (no React / ui-primitives), so
+ * The wrappers are dependency-free by design (no React / ui-primitives), so
  * the takeover logic is unit-testable and the file stays importable from the
  * test runtime.
  */
@@ -29,6 +27,27 @@ export interface OpenPathInterceptDeps {
     /** Route the open into the sidebar editor (the established openSidebarFile). */
     openInSidebar(path: string, sessionId: string): void;
 }
+/** Current DSH chat file-open funnel (`ctx.remote.session.openWorkspacePath`). */
+export interface OpenWorkspacePathService {
+    openWorkspacePath(request: {
+        path: string;
+    }, signal?: AbortSignal): Promise<{
+        ok: true;
+        value: {
+            opened: true;
+        };
+    } | {
+        ok: false;
+        error: {
+            message: string;
+        };
+    }>;
+}
+/**
+ * Wrap `session.openWorkspacePath`: intercepted calls open the sidebar editor
+ * and resolve as `{ opened: true }` so the Host OS default app is not launched.
+ */
+export declare function wrapOpenWorkspacePath(session: OpenWorkspacePathService, deps: OpenPathInterceptDeps): () => void;
 /**
  * Wrap `workspaces.openPath`: intercepted calls open the file in the sidebar
  * editor instead of the Host OS and resolve as success (the original's

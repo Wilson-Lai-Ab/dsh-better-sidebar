@@ -754,7 +754,6 @@ describe('side card settings routes', () => {
         browserInterceptHttps: false,
         centerTabOverflow: 'scroll',
         centerTabMax: 20,
-        reviewDoneSessionLimit: 30,
         editorMinimap: true,
         // The enable-switch maps default to {} (everything on).
         tabsEnabled: {},

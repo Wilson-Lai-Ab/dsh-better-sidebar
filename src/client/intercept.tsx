@@ -12,7 +12,7 @@ import { dockTabToCenter, findPaneOfTab, tabOpenIn, type SidebarStore, type Side
 import { focusLatestCenterView } from './conversation-views.tsx'
 import { t } from './locales.ts'
 import { resolveSidebarPath, selectProducedFiles } from './produced-files.ts'
-import { wrapOpenPath } from './openpath-intercept.ts'
+import { wrapOpenPath, wrapOpenWorkspacePath } from './openpath-intercept.ts'
 import css from './sidebar.module.css'
 
 function editorTabOf(ctx: Context, sessionId: string, path: string): SidebarTab {
@@ -114,18 +114,40 @@ export function registerTurnTailInterception(ctx: Context, store: SidebarStore):
 }
 
 /**
- * Register the chat file-open interception: wraps `ctx.workspaces.openPath`
- * — the single funnel every chat-side file open goes through (tool-row path
- * links, the produced-files row, prose mentions) — so opens land in the
- * sidebar editor instead of the Host OS. Gated by BOTH the `interceptOpenPath`
- * pref and the editor tab's enable switch; declined opens fall through to
- * the original method. Returns the disposer restoring the original (HMR-safe).
+ * Register the chat file-open interception. Current DSH tool-row clicks call
+ * `ctx.remote.session.openWorkspacePath` (Host OS default app). Older builds
+ * used `ctx.workspaces.openPath`. Both are wrapped so files land in the
+ * sidebar editor. Gated by BOTH the `interceptOpenPath` pref and the editor
+ * tab's enable switch; declined opens fall through. Returns the disposer
+ * restoring the original methods (HMR-safe).
  */
 export function registerOpenPathInterception(ctx: Context, store: SidebarStore): () => void {
-  return wrapOpenPath(ctx.workspaces, {
+  const deps = {
     takeoverEnabled: () => store.getPrefs().interceptOpenPath !== false
       && store.getPrefs().tabsEnabled['editor'] !== false,
     currentSessionId: () => ctx.sessions.list.getSnapshot().current,
-    openInSidebar: (path, sessionId) => { openSidebarFile(ctx, store, sessionId, path) },
-  })
+    openInSidebar: (path: string, sessionId: string) => { openSidebarFile(ctx, store, sessionId, path) },
+  }
+  const restorePath = typeof ctx.workspaces?.openPath === 'function'
+    ? wrapOpenPath(ctx.workspaces, deps)
+    : () => { /* older/newer runtimes may omit this funnel */ }
+  // Cordis treats `remote.session` as its own service. Reading
+  // `ctx.remote.session` without inject `remote.session` throws
+  // "cannot get property remote.session without inject".
+  let session: Parameters<typeof wrapOpenWorkspacePath>[0] | undefined
+  try {
+    const value = typeof ctx.get === 'function' ? ctx.get('remote.session') : undefined
+    if (value !== undefined && typeof (value as { openWorkspacePath?: unknown }).openWorkspacePath === 'function') {
+      session = value as Parameters<typeof wrapOpenWorkspacePath>[0]
+    }
+  } catch {
+    session = undefined
+  }
+  const restoreWorkspace = session !== undefined
+    ? wrapOpenWorkspacePath(session, deps)
+    : () => { /* DSH without session.openWorkspacePath keeps workspaces.openPath only */ }
+  return () => {
+    restorePath()
+    restoreWorkspace()
+  }
 }

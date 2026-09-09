@@ -36,7 +36,7 @@ import './layout.css'
 
 /** Services required before mounting (provided by the client runtime; the
  *  locale service backs the sidebar's copy — see locales.ts). */
-export const inject = ['slots', 'sessions', 'connection', 'workspaces', 'locale']
+export const inject = ['slots', 'sessions', 'connection', 'workspaces', 'locale', 'remote', 'remote.session']
 
 /**
  * Error boundary over the sidebar tree (root scope): a render error in the

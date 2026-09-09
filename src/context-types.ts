@@ -381,6 +381,23 @@ export interface SidebarWorkspacesService {
 }
 
 /**
+ * Current DSH chat file-open remote (`ctx.remote.session.openWorkspacePath`).
+ * Tool-row path clicks resolve against the session cwd and call this, which
+ * hands the path to the Host OS default application unless a plugin wraps it.
+ */
+export interface SidebarRemoteSession {
+  openWorkspacePath(
+    request: { path: string },
+    signal?: AbortSignal,
+  ): Promise<{ ok: true; value: { opened: true } } | { ok: false; error: { message: string } }>
+}
+
+/** Client typert remote namespaces this plugin wraps. */
+export interface SidebarRemote {
+  session?: SidebarRemoteSession
+}
+
+/**
  * The invariant service face (mirror of @deepseek-ai/dsh-invariants'
  * InvariantRegistry). The upstream augmentation does not reach this Context
  * (dual-cordis-instance resolution), so the register signature is restated
@@ -456,6 +473,7 @@ declare module 'cordis' {
     webRuntime: SidebarWebRuntime
     slots: SidebarSlotsService
     workspaces: SidebarWorkspacesService
+    remote: SidebarRemote
     settings: SidebarSettingsService
     invariants: SidebarInvariantsService
     tools: SidebarToolsService
