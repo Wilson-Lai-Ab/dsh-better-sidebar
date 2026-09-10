@@ -6,6 +6,7 @@
  * sits on the conversation column and renders the tab body ourselves.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../context-types.ts'
@@ -17,6 +18,7 @@ import {
 } from './state.ts'
 import { classOfKind, latestGitKinds, workspacePathOfTab } from './git-status-style.ts'
 import { observeHostHeader, scheduleGuardedFrame } from './dom-sync.ts'
+import { conversationPreviewHost, previewOverlayTop } from './preview-overlay.ts'
 import { isCenterBodyShown, resolveCenterShown } from './center-preview-mount.ts'
 import { t } from './locales.ts'
 import { effectiveTokenValue, isDarkScheme } from './theme.ts'
@@ -252,6 +254,22 @@ export function useHostHeaderTabSync(
  * FRESH conversation the host renders no header strip, so there is nowhere for
  * a docked-file tab to live — the overlay must paint its own strip.
  */
+/** Conversation column that owns the session header — overlay host. */
+function useConversationPreviewHost(): HTMLElement | null {
+  const [host, setHost] = useState(() => conversationPreviewHost())
+  useEffect(() => {
+    const check = (): void => {
+      const next = conversationPreviewHost()
+      setHost(prev => prev === next ? prev : next)
+    }
+    const root = document.getElementById('root')
+    const watcher = root === null ? undefined : observeHostHeader(root, check)
+    check()
+    return () => { watcher?.disconnect() }
+  }, [])
+  return host
+}
+
 function useHostHeaderTablistPresent(): boolean {
   const [present, setPresent] = useState(() => {
     const list = document.querySelector('[data-slot="conversation.session.header"] header [role="tablist"]')
@@ -326,7 +344,38 @@ export function CenterPreview(props: {
   onTabMenu: (menu: CenterTabMenu) => void
 }): ReactNode {
   const { ctx, store, state, sessionId, cwd, left, right, top, bottom, onReferenceFile, onTabMenu } = props
+  const host = useConversationPreviewHost()
   const hostHeaderPresent = useHostHeaderTablistPresent()
+  const [hostedInset, setHostedInset] = useState({ top: 0, bottom: 0 })
+  useEffect(() => {
+    if (host === null) return
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative'
+    const measure = (): void => {
+      const header = host.querySelector('[data-slot="conversation.session.header"] header')
+        ?? host.querySelector('header')
+      const tablist = header instanceof HTMLElement ? header.querySelector('[role="tablist"]') : null
+      const origin = host.getBoundingClientRect()
+      const nextTop = previewOverlayTop(
+        header instanceof HTMLElement ? header.getBoundingClientRect() : null,
+        tablist instanceof HTMLElement ? tablist.getBoundingClientRect() : null,
+        0,
+        origin,
+      )
+      const nextBottom = Math.max(0, bottom - Math.max(0, window.innerHeight - origin.bottom))
+      setHostedInset(prev => prev.top === nextTop && prev.bottom === nextBottom ? prev : { top: nextTop, bottom: nextBottom })
+    }
+    measure()
+    const Observer = typeof ResizeObserver === 'function' ? ResizeObserver : undefined
+    const observer = Observer === undefined ? undefined : new Observer(measure)
+    observer?.observe(host)
+    const header = host.querySelector('header')
+    if (header instanceof HTMLElement) observer?.observe(header)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [host, bottom])
   const activeId = state.centerActive
   const lastShownId = useRef<string | null>(null)
   const shown = resolveCenterShown(
@@ -337,11 +386,17 @@ export function CenterPreview(props: {
   lastShownId.current = shown.lastId
   if (state.centerTabs.length === 0) return null
   const chatting = shown.chatting
-
-  return (
+  const hosted = host !== null
+  const overlay = (
     <div
-      className={clsx(css.centerPreview, chatting && css.centerPreviewHidden)}
-      style={{ left, right: window.innerWidth - right, top, bottom }}
+      className={clsx(
+        css.centerPreview,
+        hosted && css.centerPreviewHosted,
+        chatting && css.centerPreviewHidden,
+      )}
+      style={hosted
+        ? { top: hostedInset.top, bottom: hostedInset.bottom }
+        : { left, right: window.innerWidth - right, top, bottom }}
       aria-hidden={chatting}
     >
       {/*
@@ -420,4 +475,5 @@ export function CenterPreview(props: {
       </div>
     </div>
   )
+  return hosted ? createPortal(overlay, host) : overlay
 }

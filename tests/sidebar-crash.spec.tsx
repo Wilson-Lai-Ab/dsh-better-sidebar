@@ -150,6 +150,23 @@ describe('tab crash containment', () => {
   })
 })
 
+describe('center preview conversation host', () => {
+  it('portals the preview into the conversation root instead of pinning it to the viewport', () => {
+    const conversation = document.createElement('div')
+    const slot = document.createElement('div')
+    slot.setAttribute('data-slot', 'conversation.session.header')
+    conversation.append(slot)
+    document.body.append(conversation)
+    const { container, service } = mountSidebar()
+    service.registerTab({ id: 'editor', title: () => 'Editor', component: () => 'preview-body' })
+    act(() => { service.openTab({ type: 'editor', title: 'pom.xml', path: '/p/pom.xml' }) })
+    const preview = conversation.querySelector('[class*="centerPreview"]')
+    expect(preview).not.toBeNull()
+    expect(preview!.className).toMatch(/centerPreviewHosted/)
+    expect(container.querySelector('[class*="centerPreview"]')).toBeNull()
+  })
+})
+
 describe('center preview fallback tab strip (fresh conversation)', () => {
   it('renders a 对话 tab + closable file tab when the host header has no tablist', () => {
     const { container, service, store } = mountSidebar()
