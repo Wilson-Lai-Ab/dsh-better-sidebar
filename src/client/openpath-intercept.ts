@@ -46,8 +46,13 @@ export function wrapOpenWorkspacePath(
   session: OpenWorkspacePathService,
   deps: OpenPathInterceptDeps,
 ): () => void {
-  const original = session.openWorkspacePath
-  session.openWorkspacePath = (request, signal) => {
+  // Current DSH mounts remotes as getters (`RemoteNamespaceService.install`):
+  // every access returns a fresh function, and assignment throws
+  // "Cannot set property ... which has only a getter". Replace the
+  // descriptor instead of writing the field.
+  const own = Object.getOwnPropertyDescriptor(session, 'openWorkspacePath')
+  const original = session.openWorkspacePath.bind(session)
+  const wrapped: OpenWorkspacePathService['openWorkspacePath'] = (request, signal) => {
     if (deps.takeoverEnabled()) {
       const sessionId = deps.currentSessionId()
       if (sessionId !== undefined && request.path.length > 0) {
@@ -55,10 +60,20 @@ export function wrapOpenWorkspacePath(
         return Promise.resolve({ ok: true, value: { opened: true } })
       }
     }
-    return original.call(session, request, signal)
+    return original(request, signal)
   }
+  Object.defineProperty(session, 'openWorkspacePath', {
+    configurable: true,
+    enumerable: own?.enumerable ?? true,
+    writable: true,
+    value: wrapped,
+  })
   return () => {
-    session.openWorkspacePath = original
+    if (own !== undefined) {
+      Object.defineProperty(session, 'openWorkspacePath', own)
+      return
+    }
+    Reflect.deleteProperty(session, 'openWorkspacePath')
   }
 }
 

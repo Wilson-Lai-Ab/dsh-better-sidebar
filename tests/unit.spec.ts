@@ -1815,6 +1815,36 @@ describe('open-workspace-path interception', () => {
     expect(d.sidebar).toEqual([])
     restore()
   })
+
+  /**
+   * DSH `ctx.remote.session.openWorkspacePath` is not a writable method.
+   * api-gateway installs a getter that returns a *fresh* function on every
+   * access (`RemoteNamespaceService.install`). Assigning a wrapper is a
+   * no-op / TypeError, so chat tool-row clicks still RPC to Host OS.
+   */
+  it('takes over a getter-installed openWorkspacePath the way current DSH mounts it', async () => {
+    const native: string[] = []
+    const session = {} as OpenWorkspacePathService
+    Object.defineProperty(session, 'openWorkspacePath', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return (request: { path: string }) => {
+          native.push(request.path)
+          return Promise.resolve({ ok: true as const, value: { opened: true as const } })
+        }
+      },
+    })
+    const d = deps()
+    const restore = wrapOpenWorkspacePath(session, d)
+    const result = await session.openWorkspacePath({ path: '/w/src/runtime.ts' })
+    expect(result).toEqual({ ok: true, value: { opened: true } })
+    expect(native).toEqual([])
+    expect(d.sidebar).toEqual(['s1:/w/src/runtime.ts'])
+    restore()
+    await session.openWorkspacePath({ path: '/w/src/b.ts' })
+    expect(native).toEqual(['/w/src/b.ts'])
+  })
 })
 
 describe('open-path interception wiring', () => {
