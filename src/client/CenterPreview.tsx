@@ -18,7 +18,7 @@ import {
 } from './state.ts'
 import { classOfKind, latestGitKinds, workspacePathOfTab } from './git-status-style.ts'
 import { observeHostHeader, scheduleGuardedFrame } from './dom-sync.ts'
-import { conversationPreviewHost, previewOverlayTop } from './preview-overlay.ts'
+import { conversationPreviewHost, previewOverlayBottom, previewOverlayTop } from './preview-overlay.ts'
 import { isCenterBodyShown, resolveCenterShown } from './center-preview-mount.ts'
 import { t } from './locales.ts'
 import { effectiveTokenValue, isDarkScheme } from './theme.ts'
@@ -361,7 +361,13 @@ export function CenterPreview(props: {
         0,
         origin,
       )
-      const nextBottom = Math.max(0, bottom - Math.max(0, window.innerHeight - origin.bottom))
+      const composer = document.querySelector<HTMLElement>('[data-composer-card]')
+       const nextBottom = previewOverlayBottom({
+         hostBottom: origin.bottom,
+         composerTop: composer?.getBoundingClientRect().top,
+         panelInset: Math.max(0, bottom - Math.max(0, window.innerHeight - origin.bottom)),
+         gap: 8,
+       })
       setHostedInset(prev => prev.top === nextTop && prev.bottom === nextBottom ? prev : { top: nextTop, bottom: nextBottom })
     }
     measure()

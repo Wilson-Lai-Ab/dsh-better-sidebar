@@ -9,7 +9,7 @@
  * The toolbar (mode toggle / dirty dot / save / status) renders as its own
  * row below the host's title bar, VSCode-style.
  */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Component, createElement, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ErrorInfo, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
@@ -31,6 +31,7 @@ import { gitFileTarget } from './git-repo.ts'
 import { badgeOf } from './git-status-style.ts'
 import { resolveSidebarPath } from './produced-files.ts'
 import { rememberViewMode, resolveViewMode, type ViewMode } from './editor-view-mode.ts'
+import { markdownTextLabelProps } from './markdown-labels.ts'
 import { htmlScrollRestoreMessage, parseHtmlScrollMessage } from '../html-scroll-bridge.ts'
 import { previewScrollOf, rememberPreviewScroll } from './preview-scroll.ts'
 import { t } from './locales.ts'
@@ -96,6 +97,41 @@ interface SelectionPopup {
  * in the side card settings (warned); the toggle below reflects it.
  */
 export const HTML_IFRAME_SANDBOX = 'allow-scripts allow-popups allow-downloads allow-modals'
+
+/** Isolate DSH MarkdownText: a render throw must not blank the editor tab. */
+class MarkdownPreviewBoundary extends Component<
+  { children?: ReactNode; fallback: string },
+  { error: string | null }
+> {
+  state = { error: null as string | null }
+
+  static getDerivedStateFromError(error: unknown): { error: string } {
+    return { error: error instanceof Error ? error.message : String(error) }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('[dsh-better-sidebar] markdown preview error:', error, info.componentStack)
+  }
+
+  render(): ReactNode {
+    if (this.state.error !== null) {
+      return <pre className={css.editorMdFallback}>{this.props.fallback}</pre>
+    }
+    return this.props.children
+  }
+}
+
+function MarkdownPreview(props: { text: string; copyLabel: string; copiedLabel: string }): ReactNode {
+  const copy = { copyLabel: props.copyLabel, copiedLabel: props.copiedLabel }
+  return (
+    <MarkdownPreviewBoundary fallback={props.text}>
+      {createElement(MarkdownText, {
+        text: props.text,
+        ...markdownTextLabelProps(copy, t('markdownFootnotes')),
+      } as Parameters<typeof MarkdownText>[0] & ReturnType<typeof markdownTextLabelProps>)}
+    </MarkdownPreviewBoundary>
+  )
+}
 
 /** Keep/Undo bar inset: the live Replit gutter width (max 120, else width/6). */
 export function syncMinimapInset(host: HTMLElement, enabled: boolean): void {
@@ -649,9 +685,10 @@ export function TextEditor(props: FileViewerProps) {
               fall back to hardcoded Chinese otherwise (same pattern as the
               chat's AssistantMarkdown). Render-time t() keeps them following
               the active locale on live switches. */}
-          <MarkdownText
+          <MarkdownPreview
             text={draft ?? content ?? ''}
-            codeLabels={{ copyLabel: t('copy'), copiedLabel: t('copied') }}
+            copyLabel={t('copy')}
+            copiedLabel={t('copied')}
           />
         </div>
       )}

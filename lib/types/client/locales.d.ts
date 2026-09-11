@@ -120,6 +120,7 @@ export declare const zh: {
     parent: string;
     copied: string;
     copy: string;
+    markdownFootnotes: string;
     newFile: string;
     openEditor: string;
     gitDetail: string;

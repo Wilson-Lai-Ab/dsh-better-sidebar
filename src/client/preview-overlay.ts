@@ -22,6 +22,17 @@ export function previewOverlayTop(
 }
 
 /** Conversation column that owns the session header — overlay host. */
+export function previewOverlayBottom(options: {
+  hostBottom: number
+  composerTop: number | undefined
+  panelInset: number
+  gap: number
+}): number {
+  const { hostBottom, composerTop, panelInset, gap } = options
+  const composerInset = composerTop === undefined ? 0 : Math.max(0, hostBottom - composerTop + gap)
+  return Math.max(panelInset, composerInset)
+}
+
 export function conversationPreviewHost(
   root: Pick<ParentNode, 'querySelector'> = document,
 ): HTMLElement | null {

@@ -12,6 +12,7 @@ import { insertFileRef } from './conversation-draft.ts'
 import { fileRefOf, type FileRef, writeFileRefClipboard } from './file-ref.ts'
 import type { SelectionLines } from './selection-payload.ts'
 import { t } from './locales.ts'
+import { selectionPopupPosition } from './selection-quote-position.ts'
 import css from './sidebar.module.css'
 
 interface QuotePopup {
@@ -56,10 +57,17 @@ export function SelectionQuote(props: {
       }
       const located = locate(host, text)
       const rect = sel.getRangeAt(0).getBoundingClientRect()
+      const composer = document.querySelector<HTMLElement>('[data-composer-card]')
+      const position = selectionPopupPosition(rect, {
+        viewportHeight: window.innerHeight,
+        popupHeight: 28,
+        composerTop: composer?.getBoundingClientRect().top,
+        gap: 8,
+      })
       const next: QuotePopup = {
         ref: fileRefOf(located.path, cwd, located.lines, text),
-        left: Math.min(Math.max(rect.left + rect.width / 2, 80), window.innerWidth - 80),
-        top: rect.top,
+        left: Math.min(Math.max(position.left, 80), window.innerWidth - 80),
+        top: position.top,
       }
       popupRef.current = next
       setPopup(next)

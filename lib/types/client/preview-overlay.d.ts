@@ -16,4 +16,10 @@ export declare function previewOverlayTop(header: {
     top: number;
 }): number;
 /** Conversation column that owns the session header — overlay host. */
+export declare function previewOverlayBottom(options: {
+    hostBottom: number;
+    composerTop: number | undefined;
+    panelInset: number;
+    gap: number;
+}): number;
 export declare function conversationPreviewHost(root?: Pick<ParentNode, 'querySelector'>): HTMLElement | null;

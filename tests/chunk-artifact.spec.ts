@@ -32,6 +32,9 @@ describe('built chunk artifacts', () => {
   it('each chunk factory materializes through a require over the platform externals', () => {
     const registry = g.__dshChunks__ as Record<string, unknown>
     const table = new Map<string, unknown>(CHUNK_EXTERNALS.map(spec => [spec, { spec }]))
+    // Editor chunk declares `class … extends Component`; a bare `{ spec }` stub
+    // throws `Class extends value undefined`.
+    table.set('react', { spec: 'react', Component: class Component {} })
     for (const name of CHUNKS) {
       const factory = registry[name] as (require: (spec: string) => unknown) => Record<string, unknown>
       expect(() => factory((spec) => {

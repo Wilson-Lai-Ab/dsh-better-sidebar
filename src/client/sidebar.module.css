@@ -1845,7 +1845,45 @@
   min-height: 0;
   overflow-y: auto;
   padding: 10px 14px;
+  font: var(--dsw-font-markdown-base, var(--dsw-font-xs-13));
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.editorMd :global(h1) { font: var(--dsw-font-markdown-h1); margin: 24px 0 12px; }
+.editorMd :global(h2) { font: var(--dsw-font-markdown-h2); margin: 24px 0 12px; }
+.editorMd :global(h3) { font: var(--dsw-font-markdown-h3); margin: 24px 0 12px; }
+.editorMd :global(h4),
+.editorMd :global(h5),
+.editorMd :global(h6) { font: var(--dsw-font-markdown-h4, var(--dsw-font-markdown-base-strong)); margin: 16px 0; }
+.editorMd :global(p) { margin: 12px 0; }
+.editorMd :global(:where(ul, ol)) { margin: 12px 0; padding-left: 18px; }
+.editorMd :global(hr) { display: block; border: none; height: 0.5px; margin: 24px 0; background: var(--dsw-alias-border-l2); }
+.editorMd :global(blockquote) { border-left: 2px solid var(--dsw-alias-label-caption); margin: 12px 0 0; padding-left: 14px; }
+.editorMd :global(pre) { margin: 12px 0; font-family: var(--ds-font-family-code); overflow: auto; }
+.editorMd :global(:not(pre) > code) {
+  font-family: var(--ds-font-family-code);
+  font-size: 0.875em;
+  background: var(--dsw-alias-markdown-inline-code);
+  border-radius: 6px;
+  padding: 0 5px;
+}
+.editorMd :global(table) { border-collapse: collapse; width: max-content; max-width: 100%; }
+.editorMd :global(th),
+.editorMd :global(td) {
+  padding: 8px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  text-align: start;
+  vertical-align: top;
+}
+.editorMd :global(th) { font: var(--dsw-font-markdown-table-head, inherit); }
+.editorMd :global(p:first-child) { margin-top: 0; }
+
+.editorMdFallback {
+  margin: 0;
+  white-space: pre-wrap;
   font: var(--dsw-font-xs-13);
+  font-family: var(--ds-font-family-code);
 }
 
 .editorMd :global(mark[data-dsh-reveal]) {
