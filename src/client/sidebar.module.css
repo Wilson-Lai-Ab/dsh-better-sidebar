@@ -602,30 +602,34 @@
 
 /* Hosted in the conversation column: same containing block as 对话 / 轨迹,
    so the overlay moves with that column instead of pinning to the viewport.
-   The box itself stays full-bleed: narrowing it would let the transcript
-   underneath show through the leftover side gutters. */
+   The box stays full-bleed: narrowing it would both expose the transcript
+   through the leftover gutters and drag the preview's scrollbar off the
+   column edge. */
 .centerPreviewHosted {
   position: absolute;
   left: 0;
   right: 0;
   z-index: 6;
-  /* The host scroll body reserves `scrollbar-gutter: stable` (8px, matching
-     its global ::-webkit-scrollbar rule), so 对话 centers inside a box one
-     gutter narrower than this overlay's is. Mirror the same token the host
-     uses on itself, or the two content columns sit half a gutter apart. */
-  padding-right: var(--dsh-scrollbar-width, 0px);
 }
 
-/* The preview's CONTENT column follows the 对话 transcript column exactly.
-   The host constrains that column to --dsh-chat-content-width (width 100% +
-   max-width + auto margins) and lets the user drag it via [data-width-handle].
-   Consuming the host's own variable means dragging the handle resizes a
-   docked preview live with no JS, and the gutters it opens are exactly where
-   the width handles live — so they stay reachable while a file is docked. */
-.centerPreviewHosted > * {
-  width: 100%;
-  max-width: var(--dsh-chat-content-width, 748px);
-  margin-inline: auto;
+/* The docked reader lines up with 对话 on BOTH axes: same content column and
+   same scrollbar x.
+   - Measure: the host constrains the transcript to --dsh-chat-content-width
+     (width 100% + max-width + auto margins) and lets the user drag it via
+     [data-width-handle]. Consuming the host's own variable means dragging the
+     handle resizes a docked preview live, with no JS, and the gutters it
+     opens are exactly where the width handles live.
+   - Scrollbar: the transcript scrolls in a body that RESERVES its gutter
+     (`scrollbar-gutter: stable`), so its bar is drawn at the far right of the
+     column. The viewer's own scroller must reserve the same gutter; without
+     it the bar hugs the narrower content column instead and the two sit ~90px
+     apart, so the page jumps when switching 对话 ↔ file.
+   Inset the CONTENT only — constraining the scroller's box would move the bar
+   back inward. The 14px floor keeps the reader's own padding when the column
+   is too narrow to inset. */
+.centerPreviewHosted .editorMd {
+  scrollbar-gutter: stable;
+  padding-inline: max(14px, calc((100% - var(--dsh-scrollbar-width, 0px) - var(--dsh-chat-content-width, 748px)) / 2));
 }
 
 /* Chat tab selected: stay in place, just invisible. visibility/display/
