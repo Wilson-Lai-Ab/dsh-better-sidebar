@@ -21,16 +21,44 @@ export function previewOverlayTop(
   return Math.max(0, top - origin.top)
 }
 
+const COMPOSER_STACK_SELECTORS = ['[data-composer-seat]', '[data-composer-card]'] as const
+
+/**
+ * Top (viewport Y) of the conversation's bottom dock stack — the bar the
+ * file preview must stay clear of.
+ *
+ * The host stacks the queue dock (任务栏), the composer hint and the composer
+ * card inside ONE sticky `[data-composer-seat]` (z-index 7, i.e. above the
+ * overlay's 6). The queue dock sits ABOVE the card, so measuring the card
+ * alone hands the whole queue-dock band back to the host and the dock paints
+ * over the preview's bottom edge. Take the outermost seat; fall back to the
+ * card for a host that renders no seat. The smallest top wins, so the overlay
+ * clears whichever element rises highest.
+ *
+ * `root` is the conversation column (the overlay's own host), not `document`,
+ * so a second mounted conversation can never supply the rect.
+ */
+export function bottomDockTop(root: ParentNode): number | undefined {
+  const tops: number[] = []
+  for (const selector of COMPOSER_STACK_SELECTORS) {
+    const node = root.querySelector(selector)
+    if (node === null) continue
+    tops.push(node.getBoundingClientRect().top)
+  }
+  return tops.length === 0 ? undefined : Math.min(...tops)
+}
+
 /** Conversation column that owns the session header — overlay host. */
 export function previewOverlayBottom(options: {
   hostBottom: number
-  composerTop: number | undefined
+  /** Top of the whole bottom dock stack (`bottomDockTop`), not just the card. */
+  dockTop: number | undefined
   panelInset: number
   gap: number
 }): number {
-  const { hostBottom, composerTop, panelInset, gap } = options
-  const composerInset = composerTop === undefined ? 0 : Math.max(0, hostBottom - composerTop + gap)
-  return Math.max(panelInset, composerInset)
+  const { hostBottom, dockTop, panelInset, gap } = options
+  const dockInset = dockTop === undefined ? 0 : Math.max(0, hostBottom - dockTop + gap)
+  return Math.max(panelInset, dockInset)
 }
 
 export function conversationPreviewHost(

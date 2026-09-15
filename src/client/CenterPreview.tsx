@@ -18,7 +18,7 @@ import {
 } from './state.ts'
 import { classOfKind, latestGitKinds, workspacePathOfTab } from './git-status-style.ts'
 import { observeHostHeader, scheduleGuardedFrame } from './dom-sync.ts'
-import { conversationPreviewHost, previewOverlayBottom, previewOverlayTop } from './preview-overlay.ts'
+import { bottomDockTop, conversationPreviewHost, previewOverlayBottom, previewOverlayTop } from './preview-overlay.ts'
 import { isCenterBodyShown, resolveCenterShown } from './center-preview-mount.ts'
 import { t } from './locales.ts'
 import { effectiveTokenValue, isDarkScheme } from './theme.ts'
@@ -361,13 +361,15 @@ export function CenterPreview(props: {
         0,
         origin,
       )
-      const composer = document.querySelector<HTMLElement>('[data-composer-card]')
-       const nextBottom = previewOverlayBottom({
-         hostBottom: origin.bottom,
-         composerTop: composer?.getBoundingClientRect().top,
-         panelInset: Math.max(0, bottom - Math.max(0, window.innerHeight - origin.bottom)),
-         gap: 8,
-       })
+      // Measure the WHOLE bottom dock stack (queue dock + hint + composer
+      // card), not the card alone: the queue dock 任务栏 sits above the card
+      // and would otherwise paint over the overlay's bottom edge.
+      const nextBottom = previewOverlayBottom({
+        hostBottom: origin.bottom,
+        dockTop: bottomDockTop(host),
+        panelInset: Math.max(0, bottom - Math.max(0, window.innerHeight - origin.bottom)),
+        gap: 8,
+      })
       setHostedInset(prev => prev.top === nextTop && prev.bottom === nextBottom ? prev : { top: nextTop, bottom: nextBottom })
     }
     measure()
@@ -400,8 +402,15 @@ export function CenterPreview(props: {
         hosted && css.centerPreviewHosted,
         chatting && css.centerPreviewHidden,
       )}
+      /*
+        Hosted: the backdrop runs to the bottom of the conversation column so
+        the transcript never shows through, while the CONTENT stops at
+        hostedInset.bottom — above the host's queue dock / composer stack,
+        which paints on top at a higher z-index. Non-hosted (fresh
+        conversation) keeps the panel-geometry box.
+      */
       style={hosted
-        ? { top: hostedInset.top, bottom: hostedInset.bottom }
+        ? { top: hostedInset.top, bottom: 0 }
         : { left, right: window.innerWidth - right, top, bottom }}
       aria-hidden={chatting}
     >
@@ -453,7 +462,10 @@ export function CenterPreview(props: {
         ))}
       </div>
       )}
-      <div className={css.centerPreviewBodies}>
+      <div
+        className={css.centerPreviewBodies}
+        style={hosted ? { marginBottom: hostedInset.bottom } : undefined}
+      >
         {state.centerTabs.map((candidate) => {
           const shownBody = isCenterBodyShown(candidate.id, shown.shownId)
           return (
