@@ -14,13 +14,14 @@ export {
 export interface FindFilesOptions {
   limit?: number
   maxMs?: number
+  /** Files considered for scoring (directories and skip-list entries do not count). */
   maxVisited?: number
   now?: () => number
 }
 
 export const FIND_LIMIT_DEFAULT = 50
-const FIND_MAX_MS = 1500
-const FIND_MAX_VISITED = 8000
+const FIND_MAX_MS = 2000
+const FIND_MAX_VISITED = 20000
 
 function normalizeRel(rel: string): string {
   return rel.replace(/\\/g, '/')
@@ -50,8 +51,6 @@ export async function findFiles(root: string, query: string, options: FindFilesO
     const children: { abs: string; rel: string }[] = []
     try {
       for await (const dirent of level) {
-        visited += 1
-        if (visited > maxVisited) break
         const name = dirent.name
         const rel = dir.rel === '' ? name : `${dir.rel}/${name}`
         if (dirent.isDirectory()) {
@@ -60,6 +59,8 @@ export async function findFiles(root: string, query: string, options: FindFilesO
           continue
         }
         if (!dirent.isFile() && !dirent.isSymbolicLink()) continue
+        visited += 1
+        if (visited > maxVisited) break
         const match = scoreFileNameMatch(q, rel)
         if (match === null) continue
         hits.push({ path: join(dir.abs, name), rel: normalizeRel(rel), score: match.score, indices: match.indices })

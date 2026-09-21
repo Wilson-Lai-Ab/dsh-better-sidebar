@@ -68,6 +68,24 @@ describe('findFiles', () => {
     await writeFile(join(root, 'a.ts'), '')
     expect(await findFiles(root, '   ')).toEqual([])
   })
+
+  it('still finds a nested file when directory entries would exhaust the walk budget', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-find-'))
+    await mkdir(join(root, 'docs'))
+    await writeFile(join(root, 'docs', 'casdoor-sso.md'), '')
+    const hits = await findFiles(root, 'casdoor', { limit: 10, maxVisited: 1 })
+    expect(hits.map(hit => hit.rel)).toEqual(['docs/casdoor-sso.md'])
+  })
+
+  it('does not spend the walk budget on skipped directories', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-find-'))
+    await mkdir(join(root, 'node_modules', 'pkg'), { recursive: true })
+    await writeFile(join(root, 'node_modules', 'pkg', 'casdoor.js'), '')
+    await mkdir(join(root, 'src'))
+    await writeFile(join(root, 'src', 'casdoor-sso.md'), '')
+    const hits = await findFiles(root, 'casdoor', { limit: 10, maxVisited: 1 })
+    expect(hits.map(hit => hit.rel)).toEqual(['src/casdoor-sso.md'])
+  })
 })
 
 describe('presentFindHit', () => {
